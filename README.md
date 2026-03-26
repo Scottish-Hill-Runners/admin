@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SHR Admin
 
-## Getting Started
+Separate admin application for Scottish Hill Runners editors.
 
-First, run the development server:
+## Purpose
+
+This app provides a non-technical editing workflow for content stored in the GitHub-backed content repository. The public `shr-web` site remains a separate static publishing application.
+
+Initial MVP scope:
+
+- News editing
+- Race information editing
+- Race results CSV upload and validation
+
+## Planned architecture
+
+- Next.js App Router application with a server runtime
+- Magic-link authentication for editors
+- GitHub-backed writes to the content repository via pull requests
+- Shared validation rules derived from the public site build scripts
+
+## Current foundation
+
+- Editorial dashboard shell
+- Content repository environment configuration
+- Starter routes for News and Race workflows
+- Core dependencies installed for Auth.js, GitHub API integration, schema validation, and markdown rendering
+- Auth route scaffold and editor allowlist helper
+- News editor server action that can open a content pull request when GitHub credentials are configured
+- Middleware and server-side guards that keep editor routes behind sign-in and allowlist checks
+- Interim signed-cookie editor session flow for approved emails while real magic-link infrastructure is still pending
+- Race metadata editor flow with validation and PR creation for `races/<raceId>/index.md`
+- Results CSV draft flow with server-side validation and PR creation for `races/<raceId>/<year>.csv`
+
+## Development
+
+Install dependencies and start the dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+For GitHub OAuth auth, configure these settings in `.env.local`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `AUTH_SECRET`
+- `NEXTAUTH_URL`
+- `GITHUB_CLIENT_ID`
+- `GITHUB_CLIENT_SECRET`
+- `EDITOR_GITHUB_ALLOWLIST`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Next implementation steps
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Associate PR creation with the authenticated editor identity.
+2. Associate PR creation with the authenticated editor identity.
+3. Replace the temporary token-based GitHub write path with GitHub App authentication.
+4. Improve the CSV workflow with file upload, header mapping, and richer validation previews.

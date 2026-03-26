@@ -1,0 +1,190 @@
+"use client";
+
+import { useId, useState } from "react";
+import { useActionState } from "react";
+import { saveRaceDraft, type RaceActionState } from "@/app/races/actions";
+import type { RaceInfoFormData } from "@/lib/content-types";
+
+const initialState: RaceActionState = {
+  status: "idle",
+};
+
+type InputProps = {
+  label: string;
+  name: string;
+  placeholder?: string;
+  defaultValue?: string;
+  errors?: string[];
+};
+
+type RaceEditorFormProps = {
+  initialValues?: RaceInfoFormData | null;
+};
+
+function InputField({ label, name, placeholder, defaultValue, errors }: InputProps) {
+  return (
+    <label className="block space-y-2">
+      <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
+        {label}
+      </span>
+      <input
+        name={name}
+        placeholder={placeholder}
+        defaultValue={defaultValue}
+        className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
+      />
+      {errors?.map((error) => (
+        <p key={error} className="text-sm text-red-700">
+          {error}
+        </p>
+      ))}
+    </label>
+  );
+}
+
+export function RaceEditorForm({ initialValues }: RaceEditorFormProps) {
+  const [state, formAction, isPending] = useActionState(saveRaceDraft, initialState);
+  const formId = useId();
+  const [raceIdValue, setRaceIdValue] = useState(initialValues?.raceId ?? "RaceId");
+
+  return (
+    <form
+      action={formAction}
+      className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]"
+      onInput={(event) => {
+        const target = event.target as HTMLInputElement | HTMLTextAreaElement;
+        if (target.name === "raceId") {
+          setRaceIdValue(target.value.trim() || "RaceId");
+        }
+      }}
+    >
+      <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
+        <div className="grid gap-5 md:grid-cols-2">
+          <InputField
+            label="Race ID"
+            name="raceId"
+            placeholder="Carnethy5"
+            defaultValue={initialValues?.raceId}
+            errors={state.fieldErrors?.raceId}
+          />
+          <InputField
+            label="Title"
+            name="title"
+            placeholder="Carnethy 5"
+            defaultValue={initialValues?.title}
+            errors={state.fieldErrors?.title}
+          />
+          <InputField
+            label="Venue"
+            name="venue"
+            placeholder="West Linton"
+            defaultValue={initialValues?.venue}
+            errors={state.fieldErrors?.venue}
+          />
+          <InputField
+            label="Distance"
+            name="distance"
+            placeholder="10.0"
+            defaultValue={initialValues?.distance}
+            errors={state.fieldErrors?.distance}
+          />
+          <InputField
+            label="Climb"
+            name="climb"
+            placeholder="500"
+            defaultValue={initialValues?.climb}
+            errors={state.fieldErrors?.climb}
+          />
+          <InputField
+            label="Website"
+            name="web"
+            placeholder="https://example.org/race"
+            defaultValue={initialValues?.web}
+            errors={state.fieldErrors?.web}
+          />
+          <InputField
+            label="Male record"
+            name="maleRecord"
+            placeholder="00:52:10"
+            defaultValue={initialValues?.maleRecord}
+            errors={state.fieldErrors?.maleRecord}
+          />
+          <InputField
+            label="Female record"
+            name="femaleRecord"
+            placeholder="01:01:42"
+            defaultValue={initialValues?.femaleRecord}
+            errors={state.fieldErrors?.femaleRecord}
+          />
+          <InputField
+            label="Non-binary record"
+            name="nonBinaryRecord"
+            placeholder="01:05:00"
+            defaultValue={initialValues?.nonBinaryRecord}
+            errors={state.fieldErrors?.nonBinaryRecord}
+          />
+          <InputField
+            label="Organiser"
+            name="organiser"
+            placeholder="Race organiser name"
+            defaultValue={initialValues?.organiser}
+            errors={state.fieldErrors?.organiser}
+          />
+        </div>
+      </section>
+
+      <section className="rounded-[1.5rem] border border-stone-900/10 bg-[#172119] p-6 text-stone-50 shadow-[0_22px_55px_rgba(23,33,25,0.24)]">
+        <div className="mb-5 rounded-2xl border border-white/10 bg-black/15 p-4">
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
+            Draft summary
+          </p>
+          <p className="mt-3 text-sm leading-6 text-stone-200">
+            Target path: <span className="font-semibold text-white">races/{raceIdValue}/index.md</span>
+          </p>
+          <p className="text-sm leading-6 text-stone-300">
+            Frontmatter fields: title, venue, distance, climb, records, web, organiser
+          </p>
+          <p className="text-sm leading-6 text-stone-300">
+            Body format: markdown race description
+          </p>
+        </div>
+        <label className="block space-y-2">
+          <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
+            Race description
+          </span>
+          <textarea
+            id={`${formId}-content`}
+            name="content"
+            rows={14}
+            className="w-full rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-base text-stone-50 outline-none transition focus:border-lime-200/40"
+            placeholder="Describe the route, terrain, logistics, and entry details in markdown."
+            defaultValue={initialValues?.content}
+          />
+          {state.fieldErrors?.content?.map((error) => (
+            <p key={error} className="text-sm text-red-200">
+              {error}
+            </p>
+          ))}
+        </label>
+
+        <div className="mt-6 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
+              Draft status
+            </p>
+            <p className="mt-2 text-sm leading-6 text-stone-200">
+              {state.message ?? "Nothing submitted yet."}
+            </p>
+          </div>
+          <button
+            type="submit"
+            disabled={isPending}
+            className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500"
+          >
+            {isPending ? "Creating PR..." : "Create race draft PR"}
+          </button>
+        </div>
+      </section>
+    </form>
+  );
+}

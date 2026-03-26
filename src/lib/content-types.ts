@@ -1,0 +1,54 @@
+export type EditorialStatus = "planned" | "in-progress" | "ready" | "MVP";
+
+export type EditorialFlow = {
+  slug: string;
+  title: string;
+  description: string;
+  status: EditorialStatus;
+  path: string;
+};
+
+export type NewsFrontmatter = {
+  title: string;
+  date: string;
+  excerpt: string;
+};
+
+export type NewsListItem = {
+  slug: string;
+  title: string;
+  date: string;
+};
+
+export type RaceInfoFormData = {
+  raceId: string;
+  title: string;
+  venue: string;
+  distance: string;
+  climb: string;
+  maleRecord: string;
+  femaleRecord: string;
+  nonBinaryRecord: string;
+  web: string;
+  organiser: string;
+  content: string;
+};
+
+export type RaceListItem = {
+  raceId: string;
+  title: string;
+  venue: string;
+};
+
+export type RaceResultListItem = {
+  raceId: string;
+  year: string;
+  path: string;
+};
+
+export type CsvUploadStatus = {
+  fileName: string;
+  raceId: string;
+  year: string;
+  issues: string[];
+};
