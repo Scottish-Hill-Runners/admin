@@ -4,7 +4,7 @@ Separate admin application for Scottish Hill Runners editors.
 
 ## Purpose
 
-This app provides a non-technical editing workflow for content stored in the GitHub-backed content repository. The public `shr-web` site remains a separate static publishing application.
+This app provides a non-technical editing workflow for content stored in the GitHub-backed content repository. The public `results` site remains a separate static publishing application.
 
 Initial MVP scope:
 

@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { useActionState } from "react";
 import { saveRaceDraft, type RaceActionState } from "@/app/races/actions";
+import { MarkdownEditorField } from "@/components/markdown-editor-field";
 import type { RaceInfoFormData } from "@/lib/content-types";
 
 const initialState: RaceActionState = {
@@ -63,35 +64,33 @@ export function RaceEditorForm({ initialValues }: RaceEditorFormProps) {
           <InputField
             label="Race ID"
             name="raceId"
-            placeholder="Carnethy5"
+            placeholder="(enter a unique identifier, e.g. 'Carnethy5')"
             defaultValue={initialValues?.raceId}
             errors={state.fieldErrors?.raceId}
           />
           <InputField
             label="Title"
             name="title"
-            placeholder="Carnethy 5"
+            placeholder="(enter the race title, e.g. 'Carnethy 5')"
             defaultValue={initialValues?.title}
             errors={state.fieldErrors?.title}
           />
           <InputField
             label="Venue"
             name="venue"
-            placeholder="West Linton"
+            placeholder="(enter the venue, e.g. 'Pentland Hills, Scotland')"
             defaultValue={initialValues?.venue}
             errors={state.fieldErrors?.venue}
           />
           <InputField
-            label="Distance"
+            label="Distance (km)"
             name="distance"
-            placeholder="10.0"
             defaultValue={initialValues?.distance}
             errors={state.fieldErrors?.distance}
           />
           <InputField
-            label="Climb"
+            label="Climb (metres)"
             name="climb"
-            placeholder="500"
             defaultValue={initialValues?.climb}
             errors={state.fieldErrors?.climb}
           />
@@ -148,24 +147,14 @@ export function RaceEditorForm({ initialValues }: RaceEditorFormProps) {
             Body format: markdown race description
           </p>
         </div>
-        <label className="block space-y-2">
-          <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-            Race description
-          </span>
-          <textarea
-            id={`${formId}-content`}
-            name="content"
-            rows={14}
-            className="w-full rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-base text-stone-50 outline-none transition focus:border-lime-200/40"
-            placeholder="Describe the route, terrain, logistics, and entry details in markdown."
-            defaultValue={initialValues?.content}
-          />
-          {state.fieldErrors?.content?.map((error) => (
-            <p key={error} className="text-sm text-red-200">
-              {error}
-            </p>
-          ))}
-        </label>
+        <MarkdownEditorField
+          id={`${formId}-content`}
+          name="content"
+          label="Race description"
+          placeholder="Describe the route, terrain, logistics, and entry details in markdown."
+          defaultValue={initialValues?.content}
+          errors={state.fieldErrors?.content}
+        />
 
         <div className="mt-6 flex items-center justify-between gap-4">
           <div>

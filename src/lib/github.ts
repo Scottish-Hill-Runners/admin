@@ -62,6 +62,35 @@ function normalizeRepoPath(path: string): string {
   return decoded.replace(/^\/+/, "").replace(/^contents\//, "");
 }
 
+function normalizeNewsDate(value: unknown): string {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const isoDateMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDateMatch) {
+    return raw;
+  }
+
+  const dmyDateMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (dmyDateMatch) {
+    const [, day, month, year] = dmyDateMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsedDate = new Date(raw);
+  if (!Number.isNaN(parsedDate.getTime())) {
+    return parsedDate.toISOString().slice(0, 10);
+  }
+
+  return "";
+}
+
 async function getDefaultBranchSha(client: Octokit, repo: RepoRef, branch: string) {
   const response = await client.git.getRef({
     owner: repo.owner,
@@ -116,11 +145,54 @@ async function getRepositoryDirectory(path: string) {
   return response.data;
 }
 
+async function getRepositoryFiles(path: string, extension: string) {
+  const client = getGitHubClient();
+  if (!client) {
+    throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+  const normalizedPath = normalizeRepoPath(path).replace(/\/+$/, "");
+  const branchHeadSha = await getDefaultBranchSha(client, repo, contentConfig.branch);
+  const commit = await client.git.getCommit({
+    owner: repo.owner,
+    repo: repo.repo,
+    commit_sha: branchHeadSha,
+  });
+
+  const treeResponse = await client.git.getTree({
+    owner: repo.owner,
+    repo: repo.repo,
+    tree_sha: commit.data.tree.sha,
+    recursive: "1",
+  });
+
+  return treeResponse.data.tree
+    .filter(
+      (entry) =>
+        entry.type === "blob" &&
+        typeof entry.path === "string" &&
+        entry.path.startsWith(`${normalizedPath}/`) &&
+        entry.path.endsWith(extension)
+    )
+    .map((entry) => {
+      const relativePath = String(entry.path);
+      const name = relativePath.split("/").pop();
+
+      if (!name) {
+        throw new Error(`Invalid repository path: ${relativePath}`);
+      }
+
+      return {
+        name,
+        path: relativePath,
+      };
+    });
+}
+
 export async function listNewsDrafts(): Promise<NewsListItem[]> {
   try {
-    const entries = await getRepositoryDirectory("news");
-    const markdownFiles = entries
-      .filter((entry) => entry.type === "file" && entry.name.endsWith(".md"))
+    const markdownFiles = (await getRepositoryFiles("news", ".md"))
       .sort((left, right) => right.name.localeCompare(left.name))
       .slice(0, 24);
 
@@ -148,8 +220,7 @@ export async function listRaceDrafts(): Promise<RaceListItem[]> {
     const entries = await getRepositoryDirectory("races");
     const directories = entries
       .filter((entry) => entry.type === "dir")
-      .sort((left, right) => left.name.localeCompare(right.name))
-      .slice(0, 40);
+      .sort((left, right) => left.name.localeCompare(right.name));
 
     const items = await Promise.all(
       directories.map(async (entry) => {
@@ -181,12 +252,13 @@ export async function getNewsDraft(slug: string): Promise<
   try {
     const file = await getRepositoryFile(`news/${slug}.md`);
     const parsed = matter(file);
+    const normalizedDate = normalizeNewsDate(parsed.data.date);
 
     return {
       slug,
       data: {
         title: String(parsed.data.title ?? ""),
-        date: String(parsed.data.date ?? ""),
+        date: normalizedDate,
         excerpt: String(parsed.data.excerpt ?? ""),
       },
       content: parsed.content.trim(),
@@ -232,11 +304,12 @@ export async function getRaceResultsDraft(
 > {
   try {
     const file = await getRepositoryFile(`races/${raceId}/${year}.csv`);
+    const normalizedFile = file.replace(/\r\n?/g, "\n");
 
     return {
       raceId,
       year,
-      csvText: file.trim(),
+      csvText: normalizedFile.trim(),
     };
   } catch {
     return null;

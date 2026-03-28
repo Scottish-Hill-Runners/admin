@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { ReactNode } from "react";
 import { signOutEditor } from "@/app/sign-out/actions";
 import { contentConfig } from "@/lib/content-config";
+import { getEditorSession } from "@/lib/auth-session";
 
 type EditorialShellProps = {
   title: string;
@@ -10,18 +10,15 @@ type EditorialShellProps = {
   children: ReactNode;
 };
 
-const navItems = [
-  { href: "/", label: "Dashboard" },
-  { href: "/news", label: "News" },
-  { href: "/races", label: "Races" },
-];
-
-export function EditorialShell({
+export async function EditorialShell({
   title,
   eyebrow,
   description,
   children,
 }: EditorialShellProps) {
+  const { session, email, login } = await getEditorSession();
+  const identity = email ?? login;
+
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f4efe6_0%,#ebe3d5_100%)] px-6 py-6 text-stone-900 sm:px-8 lg:px-10">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
@@ -48,25 +45,23 @@ export function EditorialShell({
             </div>
           </div>
 
-          <nav className="mt-5 flex flex-wrap gap-3">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="rounded-full border border-stone-900/10 bg-stone-900 px-4 py-2 text-sm font-medium text-stone-50 transition hover:bg-stone-700"
-              >
-                {item.label}
-              </Link>
-            ))}
-            <form action={signOutEditor}>
-              <button
-                type="submit"
-                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
-              >
-                Sign out
-              </button>
-            </form>
-          </nav>
+          {session ? (
+            <nav className="mt-5 flex flex-wrap items-center gap-3">
+              {identity ? (
+                <p className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900">
+                  Signed in as {identity}
+                </p>
+              ) : null}
+              <form action={signOutEditor}>
+                <button
+                  type="submit"
+                  className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
+                >
+                  Sign out
+                </button>
+              </form>
+            </nav>
+          ) : null}
         </header>
 
         {children}

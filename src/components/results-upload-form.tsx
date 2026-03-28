@@ -28,6 +28,10 @@ type ResultsUploadFormProps = {
   } | null;
 };
 
+function normalizeLineEndings(value: string): string {
+  return value.replace(/\r\n?/g, "\n");
+}
+
 function parsePreview(csvText: string) {
   const lines = csvText
     .split(/\r?\n/)
@@ -73,7 +77,9 @@ export function ResultsUploadForm({ initialValues }: ResultsUploadFormProps) {
   const formId = useId();
   const [raceIdValue, setRaceIdValue] = useState(initialValues?.raceId ?? "RaceId");
   const [yearValue, setYearValue] = useState(initialValues?.year ?? "YYYY");
-  const [csvTextValue, setCsvTextValue] = useState(initialValues?.csvText ?? "");
+  const [csvTextValue, setCsvTextValue] = useState(
+    normalizeLineEndings(initialValues?.csvText ?? "")
+  );
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const preview = useMemo(() => parsePreview(csvTextValue), [csvTextValue]);
   const liveIssues = useMemo(() => validateRaceResultsCsv(csvTextValue), [csvTextValue]);
@@ -108,7 +114,7 @@ export function ResultsUploadForm({ initialValues }: ResultsUploadFormProps) {
 
     const text = await file.text();
     setSelectedFileName(file.name);
-    setCsvTextValue(text);
+    setCsvTextValue(normalizeLineEndings(text));
 
     if (!yearValue || yearValue === "YYYY") {
       const yearFromName = file.name.replace(/\.csv$/i, "");
@@ -129,7 +135,7 @@ export function ResultsUploadForm({ initialValues }: ResultsUploadFormProps) {
           setYearValue(target.value.trim() || "YYYY");
         }
         if (target.name === "csvText") {
-          setCsvTextValue(target.value);
+          setCsvTextValue(normalizeLineEndings(target.value));
         }
       }}
     >
@@ -196,9 +202,9 @@ export function ResultsUploadForm({ initialValues }: ResultsUploadFormProps) {
             name="csvText"
             rows={16}
             className="w-full rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-sm text-stone-50 outline-none transition focus:border-lime-200/40"
-            placeholder="RunnerPosition,Surname,Firstname,Club,RunnerCategory,FinishTime&#10;1,Smith,John,Local Club,M,42:11"
+            placeholder="Example: RunnerPosition,Surname,Firstname,Club,RunnerCategory,FinishTime,1,Smith,John,Local Club,M,42:11"
             value={csvTextValue}
-            onChange={(event) => setCsvTextValue(event.target.value)}
+            onChange={(event) => setCsvTextValue(normalizeLineEndings(event.target.value))}
           />
           {state.fieldErrors?.csvText?.map((error) => (
             <p key={error} className="text-sm text-red-200">

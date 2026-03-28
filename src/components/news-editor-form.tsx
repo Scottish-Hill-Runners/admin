@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { useActionState } from "react";
 import { saveNewsDraft, type NewsActionState } from "@/app/news/actions";
+import { MarkdownEditorField } from "@/components/markdown-editor-field";
 import type { NewsFrontmatter } from "@/lib/content-types";
 
 const initialState: NewsActionState = {
@@ -25,6 +26,36 @@ type NewsEditorFormProps = {
     content: string;
   } | null;
 };
+
+function getInitialSlugSuffix(initialValues: NewsEditorFormProps["initialValues"]): string {
+  if (!initialValues) {
+    return "";
+  }
+
+  const date = initialValues.data.date.trim();
+  const slug = initialValues.slug.trim();
+  if (!date || !slug || slug === date) {
+    return "";
+  }
+
+  const prefix = `${date}-`;
+  return slug.startsWith(prefix) ? slug.slice(prefix.length) : "";
+}
+
+function buildNewsSlug(date: string, suffix: string): string {
+  const normalizedDate = date.trim();
+  const normalizedSuffix = suffix.trim();
+
+  if (!normalizedDate) {
+    return "new-item-slug";
+  }
+
+  if (!normalizedSuffix) {
+    return normalizedDate;
+  }
+
+  return `${normalizedDate}-${normalizedSuffix}`;
+}
 
 function InputField({
   label,
@@ -59,7 +90,9 @@ export function NewsEditorForm({ initialValues }: NewsEditorFormProps) {
   const [state, formAction, isPending] = useActionState(saveNewsDraft, initialState);
   const buttonLabel = isPending ? "Creating PR..." : "Create draft PR";
   const formId = useId();
-  const [slugValue, setSlugValue] = useState(initialValues?.slug ?? "new-item-slug");
+  const [dateValue, setDateValue] = useState(initialValues?.data.date ?? "");
+  const [slugSuffixValue, setSlugSuffixValue] = useState(getInitialSlugSuffix(initialValues));
+  const slugValue = buildNewsSlug(dateValue, slugSuffixValue);
 
   return (
     <form
@@ -67,8 +100,11 @@ export function NewsEditorForm({ initialValues }: NewsEditorFormProps) {
       className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]"
       onInput={(event) => {
         const target = event.target as HTMLInputElement | HTMLTextAreaElement;
-        if (target.name === "slug") {
-          setSlugValue(target.value.trim() || "new-item-slug");
+        if (target.name === "date") {
+          setDateValue(target.value);
+        }
+        if (target.name === "slugSuffix") {
+          setSlugSuffixValue(target.value);
         }
       }}
     >
@@ -77,16 +113,9 @@ export function NewsEditorForm({ initialValues }: NewsEditorFormProps) {
           <InputField
             label="Title"
             name="title"
-            placeholder="Scottish Championship fixtures announced"
+            placeholder="(Give the post a descriptive title)"
             defaultValue={initialValues?.data.title}
             errors={state.fieldErrors?.title}
-          />
-          <InputField
-            label="Slug"
-            name="slug"
-            placeholder="championship-fixtures-announced"
-            defaultValue={initialValues?.slug}
-            errors={state.fieldErrors?.slug}
           />
           <InputField
             label="Date"
@@ -94,6 +123,13 @@ export function NewsEditorForm({ initialValues }: NewsEditorFormProps) {
             type="date"
             defaultValue={initialValues?.data.date}
             errors={state.fieldErrors?.date}
+          />
+          <InputField
+            label="Slug suffix (optional)"
+            name="slugSuffix"
+            placeholder="(set this to 1, 2 etc. if there is another post for the same date)"
+            defaultValue={getInitialSlugSuffix(initialValues)}
+            errors={state.fieldErrors?.slugSuffix}
           />
           <label className="block space-y-2">
             <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
@@ -123,6 +159,7 @@ export function NewsEditorForm({ initialValues }: NewsEditorFormProps) {
           <p className="mt-3 text-sm leading-6 text-stone-200">
             Target path: <span className="font-semibold text-white">news/{slugValue}.md</span>
           </p>
+          <input type="hidden" name="slug" value={slugValue} readOnly />
           <p className="text-sm leading-6 text-stone-300">
             Frontmatter fields: title, date, excerpt
           </p>
@@ -130,24 +167,14 @@ export function NewsEditorForm({ initialValues }: NewsEditorFormProps) {
             Body format: markdown article content
           </p>
         </div>
-        <label className="block space-y-2">
-          <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-            Body
-          </span>
-          <textarea
-            id={`${formId}-content`}
-            name="content"
-            rows={14}
-            className="w-full rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-base text-stone-50 outline-none transition focus:border-lime-200/40"
-            placeholder="Write the article body in markdown. A richer editor can sit on top of this later."
-            defaultValue={initialValues?.content}
-          />
-          {state.fieldErrors?.content?.map((error) => (
-            <p key={error} className="text-sm text-red-200">
-              {error}
-            </p>
-          ))}
-        </label>
+        <MarkdownEditorField
+          id={`${formId}-content`}
+          name="content"
+          label="Body"
+          placeholder="(Write the article body here)"
+          defaultValue={initialValues?.content}
+          errors={state.fieldErrors?.content}
+        />
 
         <div className="mt-6 flex items-center justify-between gap-4">
           <div>

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@mdxeditor/editor": "^3.53.1",
     "@octokit/rest": "^22.0.1",
     "gray-matter": "^4.0.3",
     "next": "16.2.1",

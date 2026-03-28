@@ -11,6 +11,17 @@ export type NewsActionState = {
   fieldErrors?: Partial<Record<keyof NewsFormValues, string[]>>;
 };
 
+function buildNewsSlug(date: string, slugSuffix: string): string {
+  const normalizedDate = date.trim();
+  const normalizedSuffix = slugSuffix.trim();
+
+  if (!normalizedSuffix) {
+    return normalizedDate;
+  }
+
+  return `${normalizedDate}-${normalizedSuffix}`;
+}
+
 function buildNewsMarkdown(values: NewsFormValues): string {
   return matter.stringify(values.content.trim(), {
     title: values.title,
@@ -25,8 +36,8 @@ export async function saveNewsDraft(
 ): Promise<NewsActionState> {
   const parsed = newsFormSchema.safeParse({
     title: formData.get("title"),
-    slug: formData.get("slug"),
     date: formData.get("date"),
+    slugSuffix: formData.get("slugSuffix"),
     excerpt: formData.get("excerpt"),
     content: formData.get("content"),
   });
@@ -40,20 +51,21 @@ export async function saveNewsDraft(
   }
 
   const values = parsed.data;
+  const slug = buildNewsSlug(values.date, values.slugSuffix);
 
   try {
     const result = await createContentPullRequest({
       title: values.title,
-      path: `news/${values.slug}.md`,
+      path: `news/${slug}.md`,
       content: buildNewsMarkdown(values),
       commitMessage: `Create news draft: ${values.title}`,
       prTitle: `News: ${values.title}`,
       prBody:
         `Automated draft created by SHR Admin.\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
-        `- Path: news/${values.slug}.md\n` +
+        `- Path: news/${slug}.md\n` +
         `- Date: ${values.date}`,
-      branchName: `shr-admin/news-${values.slug}`,
+      branchName: `shr-admin/news-${slug}`,
     });
 
     return {
