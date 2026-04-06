@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useId, useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useActionState } from "react";
 import {
   saveResultsDraft,
@@ -10,23 +10,6 @@ import { validateRaceResultsCsv } from "@/lib/results-csv";
 
 const initialState: ResultsUploadState = {
   status: "idle",
-};
-
-type InputProps = {
-  label: string;
-  name: string;
-  placeholder?: string;
-  defaultValue?: string;
-  errors?: string[];
-};
-
-type ResultsUploadFormProps = {
-  initialValues?: {
-    raceId: string;
-    year: string;
-    csvText: string;
-  } | null;
-  raceItems?: Array<{ raceId: string; title: string; venue?: string }>;
 };
 
 function normalizeLineEndings(value: string): string {
@@ -51,38 +34,17 @@ function parsePreview(csvText: string) {
   };
 }
 
-function InputField({ label, name, placeholder, defaultValue, errors }: InputProps) {
-  return (
-    <label className="block space-y-2">
-      <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
-        {label}
-      </span>
-      <input
-        name={name}
-        placeholder={placeholder}
-        defaultValue={defaultValue}
-        className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
-      />
-      {errors?.map((error) => (
-        <p key={error} className="text-sm text-red-700">
-          {error}
-        </p>
-      ))}
-    </label>
-  );
-}
+type ResultsEditFormProps = {
+  raceId: string;
+  year: string;
+  csvText: string;
+};
 
-export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUploadFormProps) {
+export function ResultsEditForm({ raceId, year, csvText }: ResultsEditFormProps) {
   const [state, formAction, isPending] = useActionState(saveResultsDraft, initialState);
-  const buttonLabel = isPending ? "Validating..." : "Create results draft PR";
+  const buttonLabel = isPending ? "Updating..." : "Update results draft";
   const formId = useId();
-  const currentYear = new Date().getFullYear().toString();
-  const [raceIdValue, setRaceIdValue] = useState(initialValues?.raceId ?? "");
-  const [yearValue, setYearValue] = useState(initialValues?.year ?? currentYear);
-  const [csvTextValue, setCsvTextValue] = useState(
-    normalizeLineEndings(initialValues?.csvText ?? "")
-  );
-  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [csvTextValue, setCsvTextValue] = useState(normalizeLineEndings(csvText));
   const preview = useMemo(() => parsePreview(csvTextValue), [csvTextValue]);
   const liveIssues = useMemo(() => validateRaceResultsCsv(csvTextValue), [csvTextValue]);
   const liveErrors = liveIssues.filter((issue) => issue.level === "error");
@@ -107,92 +69,34 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
     return issueMap;
   }, [liveIssues]);
 
-  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) {
-      setSelectedFileName(null);
-      return;
-    }
-
-    const text = await file.text();
-    setSelectedFileName(file.name);
-    setCsvTextValue(normalizeLineEndings(text));
-
-    if (!yearValue || yearValue === currentYear.toString()) {
-      const yearFromName = file.name.replace(/\.csv$/i, "");
-      setYearValue(yearFromName || currentYear);
-    }
-  }
-
   return (
     <form
       action={formAction}
       className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]"
       onInput={(event) => {
         const target = event.target as HTMLInputElement | HTMLTextAreaElement;
-        if (target.name === "resultsRaceId") {
-          setRaceIdValue(target.value.trim() || "RaceId");
-        }
-        if (target.name === "resultsYear") {
-          setYearValue(target.value.trim() || "YYYY");
-        }
         if (target.name === "csvText") {
           setCsvTextValue(normalizeLineEndings(target.value));
         }
       }}
     >
+      <input type="hidden" name="resultsRaceId" value={raceId} />
+      <input type="hidden" name="resultsYear" value={year} />
+
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
-        <div className="grid gap-5">
-          <label className="block space-y-2">
-            <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600 mb-1">
               Race ID
-            </span>
-            <select
-              name="resultsRaceId"
-              value={raceIdValue}
-              onChange={(event) => setRaceIdValue(event.target.value)}
-              className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
-            >
-              <option value="">Select a race...</option>
-              {raceItems.map((item) => (
-                <option key={item.raceId} value={item.raceId}>
-                  {item.title} ({item.raceId})
-                </option>
-              ))}
-            </select>
-            {state.fieldErrors?.raceId?.map((error) => (
-              <p key={error} className="text-sm text-red-700">
-                {error}
-              </p>
-            ))}
-          </label>
-          <InputField
-            label="Results filename"
-            name="resultsYear"
-            placeholder={currentYear}
-            defaultValue={initialValues?.year}
-            errors={state.fieldErrors?.year}
-          />
-          <label className="block space-y-2">
-            <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
-              CSV file
-            </span>
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              onChange={handleFileChange}
-              className="w-full rounded-2xl border border-dashed border-stone-900/20 bg-stone-50 px-4 py-3 text-sm text-stone-700 outline-none transition focus:border-stone-900/40"
-            />
-            <p className="text-sm leading-6 text-stone-600">
-              {selectedFileName
-                ? `Loaded file: ${selectedFileName}`
-                : "Upload a CSV file to populate the editor, or paste CSV directly below."}
             </p>
-          </label>
-          <p className="text-sm leading-6 text-stone-600">
-            Paste CSV data exactly as it should be written to `races/&lt;raceId&gt;/&lt;year&gt;.csv`.
-            This first version focuses on validation and draft creation; richer upload tooling can sit on top later.
-          </p>
+            <p className="text-lg font-semibold text-stone-900">{raceId}</p>
+          </div>
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600 mb-1">
+              Results year
+            </p>
+            <p className="text-lg font-semibold text-stone-900">{year}</p>
+          </div>
         </div>
       </section>
 
@@ -202,13 +106,10 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
             Draft summary
           </p>
           <p className="mt-3 text-sm leading-6 text-stone-200">
-            Target path: <span className="font-semibold text-white">races/{raceIdValue || "<race>"}/{yearValue || "<year>"}.csv</span>
+            Target path: <span className="font-semibold text-white">races/{raceId}/{year}.csv</span>
           </p>
           <p className="text-sm leading-6 text-stone-300">
             Validation: header checks, time format checks, and runner category checks
-          </p>
-          <p className="text-sm leading-6 text-stone-300">
-            File format: raw CSV written directly to the content repository
           </p>
         </div>
         <label className="block space-y-2">
@@ -220,7 +121,6 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
             name="csvText"
             rows={16}
             className="w-full rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-sm text-stone-50 outline-none transition focus:border-lime-200/40"
-            placeholder="Example: RunnerPosition,Surname,Firstname,Club,RunnerCategory,FinishTime,1,Smith,John,Local Club,M,42:11"
             value={csvTextValue}
             onChange={(event) => setCsvTextValue(normalizeLineEndings(event.target.value))}
           />
@@ -251,7 +151,7 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
           </div>
           {blockingErrorsExist ? (
             <p className="text-sm leading-6 text-red-200">
-              Fix live blocking errors before creating a draft PR.
+              Fix live blocking errors before updating the results.
             </p>
           ) : null}
 
@@ -319,7 +219,7 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
               </div>
             ) : (
               <p className="mt-3 text-sm leading-6 text-stone-400">
-                Upload or paste CSV content to see validation results before submitting.
+                Edit CSV content above to see validation results.
               </p>
             )}
           </div>
@@ -367,7 +267,7 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
               </div>
             ) : (
               <p className="mt-3 text-sm leading-6 text-stone-400">
-                Upload or paste CSV content to preview headers and the first rows here.
+                Edit CSV content above to preview headers and rows here.
               </p>
             )}
           </div>

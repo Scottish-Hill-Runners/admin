@@ -51,21 +51,23 @@ export async function saveNewsDraft(
   }
 
   const values = parsed.data;
+  const year = values.date.slice(0, 4);
   const slug = buildNewsSlug(values.date, values.slugSuffix);
+  const filePath = `news/${year}/${slug}.md`;
 
   try {
     const result = await createContentPullRequest({
       title: values.title,
-      path: `news/${slug}.md`,
+      path: filePath,
       content: buildNewsMarkdown(values),
       commitMessage: `Create news draft: ${values.title}`,
       prTitle: `News: ${values.title}`,
       prBody:
         `Automated draft created by SHR Admin.\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
-        `- Path: news/${slug}.md\n` +
+        `- Path: ${filePath}\n` +
         `- Date: ${values.date}`,
-      branchName: `shr-admin/news-${slug}`,
+      branchName: `shr-admin/news-${year}-${slug}`,
     });
 
     return {

@@ -1,3 +1,4 @@
+import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import matter from "gray-matter";
 import { env } from "@/lib/env";
@@ -35,7 +36,14 @@ export function getGitHubClient(): Octokit | null {
     env.GITHUB_APP_PRIVATE_KEY &&
     env.GITHUB_APP_INSTALLATION_ID
   ) {
-    return new Octokit();
+    return new Octokit({
+      authStrategy: createAppAuth,
+      auth: {
+        appId: env.GITHUB_APP_ID,
+        privateKey: env.GITHUB_APP_PRIVATE_KEY.replace(/\\n/g, "\n"),
+        installationId: env.GITHUB_APP_INSTALLATION_ID,
+      },
+    });
   }
 
   return null;
@@ -198,7 +206,7 @@ export async function listNewsDrafts(): Promise<NewsListItem[]> {
 
     const items = await Promise.all(
       markdownFiles.map(async (entry) => {
-        const slug = entry.name.replace(/\.md$/, "");
+        const slug = entry.path.replace(/^news\//, "").replace(/\.md$/, "");
         const draft = await getNewsDraft(slug);
 
         return {

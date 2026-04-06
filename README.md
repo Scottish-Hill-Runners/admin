@@ -48,6 +48,15 @@ For GitHub OAuth auth, configure these settings in `.env.local`:
 - `GITHUB_CLIENT_SECRET`
 - `EDITOR_GITHUB_ALLOWLIST`
 
+For GitHub-backed writes to the content repository, configure one of these options:
+
+- Personal access token:
+	- `GITHUB_TOKEN`
+- GitHub App installation auth:
+	- `GITHUB_APP_ID`
+	- `GITHUB_APP_PRIVATE_KEY`
+	- `GITHUB_APP_INSTALLATION_ID`
+
 ## Next implementation steps
 
 1. Associate PR creation with the authenticated editor identity.

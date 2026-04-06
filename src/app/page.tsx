@@ -28,7 +28,7 @@ export default function Home() {
                 </p>
               </Link>
               <Link
-                href="/news?mode=edit"
+                href="/news/edit"
                 className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
               >
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
@@ -62,7 +62,7 @@ export default function Home() {
                 </p>
               </Link>
               <Link
-                href="/races?raceQuery="
+                href="/races/edit"
                 className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
               >
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
@@ -98,7 +98,7 @@ export default function Home() {
                 </p>
               </Link>
               <Link
-                href="/results"
+                href="/results/edit"
                 className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
               >
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">

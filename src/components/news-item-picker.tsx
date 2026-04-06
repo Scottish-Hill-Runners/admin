@@ -70,7 +70,7 @@ export function NewsItemPicker({ newsItems, initialQuery }: NewsItemPickerProps)
           filteredNewsItems.map((item) => (
             <Link
               key={item.slug}
-              href={`/news?slug=${encodeURIComponent(item.slug)}${query ? `&q=${encodeURIComponent(query)}` : ""}`}
+              href={`/news/edit?slug=${encodeURIComponent(item.slug)}${query ? `&q=${encodeURIComponent(query)}` : ""}`}
               className="rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 transition hover:border-stone-900/25 hover:bg-stone-100"
             >
               <p className="font-semibold text-stone-900">{item.title}</p>

@@ -34,12 +34,13 @@ function getInitialSlugSuffix(initialValues: NewsEditorFormProps["initialValues"
 
   const date = initialValues.data.date.trim();
   const slug = initialValues.slug.trim();
-  if (!date || !slug || slug === date) {
+  const filename = slug.split("/").pop() ?? slug;
+  if (!date || !filename || filename === date) {
     return "";
   }
 
   const prefix = `${date}-`;
-  return slug.startsWith(prefix) ? slug.slice(prefix.length) : "";
+  return filename.startsWith(prefix) ? filename.slice(prefix.length) : "";
 }
 
 function buildNewsSlug(date: string, suffix: string): string {
@@ -93,6 +94,7 @@ export function NewsEditorForm({ initialValues }: NewsEditorFormProps) {
   const [dateValue, setDateValue] = useState(initialValues?.data.date ?? "");
   const [slugSuffixValue, setSlugSuffixValue] = useState(getInitialSlugSuffix(initialValues));
   const slugValue = buildNewsSlug(dateValue, slugSuffixValue);
+  const yearValue = dateValue.slice(0, 4);
 
   return (
     <form
@@ -157,7 +159,7 @@ export function NewsEditorForm({ initialValues }: NewsEditorFormProps) {
             Draft summary
           </p>
           <p className="mt-3 text-sm leading-6 text-stone-200">
-            Target path: <span className="font-semibold text-white">news/{slugValue}.md</span>
+            Target path: <span className="font-semibold text-white">news/{yearValue ? `${yearValue}/` : ""}{slugValue}.md</span>
           </p>
           <input type="hidden" name="slug" value={slugValue} readOnly />
           <p className="text-sm leading-6 text-stone-300">

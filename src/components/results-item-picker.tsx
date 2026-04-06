@@ -9,12 +9,14 @@ type ResultsItemPickerProps = {
   raceId?: string;
   resultItems: RaceResultListItem[];
   raceQuery?: string;
+  basePath?: string;
 };
 
 export function ResultsItemPicker({
   raceId,
   resultItems,
   raceQuery,
+  basePath = "/results/edit",
 }: ResultsItemPickerProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -22,7 +24,7 @@ export function ResultsItemPicker({
   const selectedYear = searchParams.get("resultsYear") ?? "";
 
   function buildResultsHref(year: string, itemRaceId: string): string {
-    return `/results?raceId=${encodeURIComponent(itemRaceId)}&resultsYear=${encodeURIComponent(year)}${raceQuery ? `&raceQuery=${encodeURIComponent(raceQuery)}` : ""}`;
+    return `${basePath}?raceId=${encodeURIComponent(itemRaceId)}&resultsYear=${encodeURIComponent(year)}${raceQuery ? `&raceQuery=${encodeURIComponent(raceQuery)}` : ""}`;
   }
 
   return (
