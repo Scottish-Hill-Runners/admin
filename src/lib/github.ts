@@ -26,6 +26,26 @@ type CreateContentPrInput = {
   branchName: string;
 };
 
+type RepositoryDirectoryEntry = {
+  name: string;
+  path: string;
+  type: "file" | "dir" | "symlink" | "submodule";
+};
+
+type RepositoryFileEntry = {
+  path: string;
+  type: "file";
+  content: string;
+  sha: string;
+};
+
+type CachedGetEntry = {
+  etag: string;
+  data: unknown;
+};
+
+const githubGetCache = new Map<string, CachedGetEntry>();
+
 export function getGitHubClient(): Octokit | null {
   if (env.GITHUB_TOKEN) {
     return new Octokit({ auth: env.GITHUB_TOKEN });
@@ -67,7 +87,57 @@ function fromBase64(input: string): string {
 
 function normalizeRepoPath(path: string): string {
   const decoded = decodeURIComponent(path);
-  return decoded.replace(/^\/+/, "").replace(/^contents\//, "");
+  return decoded.replace(/^\/+/, "").replace(/^contents\/+/, "");
+}
+
+function buildGitHubGetCacheKey(route: string, params: Record<string, unknown>): string {
+  const sortedEntries = Object.entries(params).sort(([left], [right]) =>
+    left.localeCompare(right)
+  );
+
+  return `${route}:${JSON.stringify(sortedEntries)}`;
+}
+
+function getErrorStatus(error: unknown): number | null {
+  if (typeof error !== "object" || error === null || !("status" in error)) {
+    return null;
+  }
+
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" ? status : null;
+}
+
+async function requestGitHubGet<T>(
+  client: Octokit,
+  route: string,
+  params: Record<string, unknown>
+): Promise<T> {
+  const cacheKey = buildGitHubGetCacheKey(route, params);
+  const cached = githubGetCache.get(cacheKey);
+
+  const headers = cached?.etag ? { "if-none-match": cached.etag } : undefined;
+
+  try {
+    const response = await client.request(route, {
+      ...params,
+      headers,
+    });
+
+    const etagHeader = response.headers.etag;
+    const etag = Array.isArray(etagHeader) ? etagHeader[0] : etagHeader;
+
+    if (typeof etag === "string" && etag.length > 0) {
+      githubGetCache.set(cacheKey, { etag, data: response.data });
+    }
+
+    return response.data as T;
+  } catch (error) {
+    if (getErrorStatus(error) === 304 && cached) {
+      return cached.data as T;
+    }
+
+    throw error;
+  }
 }
 
 function normalizeNewsDate(value: unknown): string {
@@ -100,13 +170,17 @@ function normalizeNewsDate(value: unknown): string {
 }
 
 async function getDefaultBranchSha(client: Octokit, repo: RepoRef, branch: string) {
-  const response = await client.git.getRef({
+  const response = await requestGitHubGet<{ object: { sha: string } }>(
+    client,
+    "GET /repos/{owner}/{repo}/git/ref/{ref}",
+    {
     owner: repo.owner,
     repo: repo.repo,
     ref: `heads/${branch}`,
-  });
+    }
+  );
 
-  return response.data.object.sha;
+  return response.object.sha;
 }
 
 async function getRepositoryFile(path: string) {
@@ -117,18 +191,22 @@ async function getRepositoryFile(path: string) {
 
   const repo = parseRepoSlug(contentConfig.repo);
   const normalizedPath = normalizeRepoPath(path);
-  const response = await client.repos.getContent({
+  const response = await requestGitHubGet<RepositoryDirectoryEntry[] | RepositoryFileEntry>(
+    client,
+    "GET /repos/{owner}/{repo}/contents/{path}",
+    {
     owner: repo.owner,
     repo: repo.repo,
     path: normalizedPath,
     ref: contentConfig.branch,
-  });
+    }
+  );
 
-  if (Array.isArray(response.data) || !("content" in response.data)) {
+  if (Array.isArray(response) || !("content" in response)) {
     throw new Error(`Expected a file at ${normalizedPath}`);
   }
 
-  return fromBase64(response.data.content.replace(/\n/g, ""));
+  return fromBase64(response.content.replace(/\n/g, ""));
 }
 
 async function getRepositoryDirectory(path: string) {
@@ -139,18 +217,22 @@ async function getRepositoryDirectory(path: string) {
 
   const repo = parseRepoSlug(contentConfig.repo);
   const normalizedPath = normalizeRepoPath(path);
-  const response = await client.repos.getContent({
+  const response = await requestGitHubGet<RepositoryDirectoryEntry[] | RepositoryFileEntry>(
+    client,
+    "GET /repos/{owner}/{repo}/contents/{path}",
+    {
     owner: repo.owner,
     repo: repo.repo,
     path: normalizedPath,
     ref: contentConfig.branch,
-  });
+    }
+  );
 
-  if (!Array.isArray(response.data)) {
+  if (!Array.isArray(response)) {
     throw new Error(`Expected a directory at ${normalizedPath}`);
   }
 
-  return response.data;
+  return response;
 }
 
 async function getRepositoryFiles(path: string, extension: string) {
@@ -162,20 +244,30 @@ async function getRepositoryFiles(path: string, extension: string) {
   const repo = parseRepoSlug(contentConfig.repo);
   const normalizedPath = normalizeRepoPath(path).replace(/\/+$/, "");
   const branchHeadSha = await getDefaultBranchSha(client, repo, contentConfig.branch);
-  const commit = await client.git.getCommit({
+  const commit = await requestGitHubGet<{ tree: { sha: string } }>(
+    client,
+    "GET /repos/{owner}/{repo}/git/commits/{commit_sha}",
+    {
     owner: repo.owner,
     repo: repo.repo,
     commit_sha: branchHeadSha,
-  });
+    }
+  );
 
-  const treeResponse = await client.git.getTree({
+  const treeResponse = await requestGitHubGet<{
+    tree: Array<{ type?: string; path?: string }>;
+  }>(
+    client,
+    "GET /repos/{owner}/{repo}/git/trees/{tree_sha}",
+    {
     owner: repo.owner,
     repo: repo.repo,
-    tree_sha: commit.data.tree.sha,
+    tree_sha: commit.tree.sha,
     recursive: "1",
-  });
+    }
+  );
 
-  return treeResponse.data.tree
+  return treeResponse.tree
     .filter(
       (entry) =>
         entry.type === "blob" &&
@@ -369,15 +461,19 @@ export async function createContentPullRequest({
 
   let existingSha: string | undefined;
   try {
-    const existing = await client.repos.getContent({
+    const existing = await requestGitHubGet<RepositoryDirectoryEntry[] | RepositoryFileEntry>(
+      client,
+      "GET /repos/{owner}/{repo}/contents/{path}",
+      {
       owner: repo.owner,
       repo: repo.repo,
       path: normalizedPath,
       ref: baseBranch,
-    });
+      }
+    );
 
-    if (!Array.isArray(existing.data) && "sha" in existing.data) {
-      existingSha = existing.data.sha;
+    if (!Array.isArray(existing) && "sha" in existing) {
+      existingSha = existing.sha;
     }
   } catch {
     existingSha = undefined;
