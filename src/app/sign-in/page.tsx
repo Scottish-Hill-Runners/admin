@@ -12,7 +12,7 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
     <EditorialShell
       eyebrow="Authentication"
       title="Sign in"
-      description="Sign in with your GitHub account to access the editorial tools."
+      description="Sign in with your GitHub or Google account to access the editorial tools."
     >
       <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
         <article className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
@@ -20,16 +20,15 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
         </article>
 
         <article className="rounded-[1.5rem] border border-stone-900/10 bg-[#172119] p-6 text-stone-50 shadow-[0_22px_55px_rgba(23,33,25,0.24)]">
-          <h2 className="font-[family:var(--font-heading)] text-2xl">Access rules</h2>
+          <h2 className="font-[family:var(--font-heading)] text-2xl">Access</h2>
           <p className="mt-4 max-w-2xl text-base leading-7 text-stone-200">
-            Editor access is limited to GitHub usernames listed in{" "}
-            <code className="rounded bg-white/10 px-1 py-0.5 text-sm">EDITOR_GITHUB_ALLOWLIST</code>.
-            Sign in with your GitHub account; if your username is on the list
-            you will be granted access immediately.
+            This admin site is open to all Scottish Hill Runners community
+            members. Sign in with your GitHub or Google account — no approval
+            required. All edits are attributed and tracked via Git.
           </p>
-          {params?.error === "AccessDenied" || params?.error === "not-allowed" ? (
+          {params?.error === "AccessDenied" ? (
             <p className="mt-4 text-sm font-semibold uppercase tracking-[0.16em] text-amber-200">
-              Your GitHub account is not on the editor allowlist.
+              Sign-in was cancelled or denied by the provider.
             </p>
           ) : null}
         </article>

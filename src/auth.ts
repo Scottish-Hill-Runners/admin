@@ -1,8 +1,8 @@
 import NextAuth from "next-auth";
 import type { NextAuthConfig } from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
+import Google from "next-auth/providers/google";
 import { env } from "@/lib/env";
-import { isAllowedEditor } from "@/lib/editor-access";
 
 const authConfig: NextAuthConfig = {
   session: {
@@ -13,14 +13,17 @@ const authConfig: NextAuthConfig = {
       clientId: env.GITHUB_CLIENT_ID ?? "",
       clientSecret: env.GITHUB_CLIENT_SECRET ?? "",
     }),
+    Google({
+      clientId: env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: env.GOOGLE_CLIENT_SECRET ?? "",
+    }),
   ],
   pages: {
     signIn: "/sign-in",
   },
   callbacks: {
-    async signIn({ profile }) {
-      const login = (profile as { login?: string } | undefined)?.login;
-      return isAllowedEditor(login);
+    async signIn() {
+      return true;
     },
     async jwt({ token, profile }) {
       if (profile) {

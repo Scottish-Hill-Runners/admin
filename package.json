@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
-    "@mdxeditor/editor": "^3.53.1",
+    "@mdxeditor/editor": "^3.54.0",
     "@octokit/auth-app": "^8.2.0",
     "@octokit/rest": "^22.0.1",
     "gray-matter": "^4.0.3",

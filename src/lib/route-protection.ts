@@ -8,9 +8,5 @@ export async function requireEditorAccess() {
     redirect("/sign-in");
   }
 
-  if (!result.isAllowedEditor) {
-    redirect("/sign-in?error=not-allowed");
-  }
-
   return result;
 }
