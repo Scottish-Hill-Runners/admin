@@ -99,12 +99,31 @@ function buildGitHubGetCacheKey(route: string, params: Record<string, unknown>):
 }
 
 function getErrorStatus(error: unknown): number | null {
-  if (typeof error !== "object" || error === null || !("status" in error)) {
+  if (typeof error !== "object" || error === null) {
     return null;
   }
 
   const status = (error as { status?: unknown }).status;
-  return typeof status === "number" ? status : null;
+  if (typeof status === "number") {
+    return status;
+  }
+
+  if (typeof status === "string") {
+    const parsed = Number.parseInt(status, 10);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  const responseStatus = (error as { response?: { status?: unknown } }).response?.status;
+  if (typeof responseStatus === "number") {
+    return responseStatus;
+  }
+
+  if (typeof responseStatus === "string") {
+    const parsed = Number.parseInt(responseStatus, 10);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  return null;
 }
 
 async function requestGitHubGet<T>(
@@ -132,8 +151,23 @@ async function requestGitHubGet<T>(
 
     return response.data as T;
   } catch (error) {
-    if (getErrorStatus(error) === 304 && cached) {
-      return cached.data as T;
+    if (getErrorStatus(error) === 304) {
+      if (cached) {
+        return cached.data as T;
+      }
+
+      // Defensive fallback: retry once without conditional headers if a 304 arrives without cache.
+      const retryResponse = await client.request(route, params);
+      const retryEtagHeader = retryResponse.headers.etag;
+      const retryEtag = Array.isArray(retryEtagHeader)
+        ? retryEtagHeader[0]
+        : retryEtagHeader;
+
+      if (typeof retryEtag === "string" && retryEtag.length > 0) {
+        githubGetCache.set(cacheKey, { etag: retryEtag, data: retryResponse.data });
+      }
+
+      return retryResponse.data as T;
     }
 
     throw error;
