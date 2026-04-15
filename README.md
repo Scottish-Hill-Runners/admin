@@ -34,6 +34,9 @@ Initial MVP scope:
 
 ## Development
 
+Use Node 22 LTS for local development. Node 25+ can trigger JavaScript heap OOM failures with Next.js.
+This project now auto-selects Homebrew Node 22 (`/opt/homebrew/opt/node@22/bin/node`) for `npm run dev`, `npm run build`, and `npm run start` when available.
+
 Install dependencies and start the dev server:
 
 ```bash

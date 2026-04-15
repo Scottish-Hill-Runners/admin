@@ -6,9 +6,9 @@
     "node": ">=22 <25"
   },
   "scripts": {
-    "dev": "NODE_OPTIONS=--max-old-space-size=4096 next dev",
-    "build": "NODE_OPTIONS=--max-old-space-size=6144 next build",
-    "start": "next start",
+    "dev": "node scripts/run-next-with-node22.mjs dev",
+    "build": "node scripts/run-next-with-node22.mjs build",
+    "start": "node scripts/run-next-with-node22.mjs start",
     "lint": "eslint"
   },
   "dependencies": {

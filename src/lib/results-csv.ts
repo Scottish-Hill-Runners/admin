@@ -17,7 +17,7 @@ export type CsvIssue = {
   message: string;
 };
 
-function splitCsvLine(line: string): string[] {
+export function splitCsvLine(line: string): string[] {
   const values: string[] = [];
   let current = "";
   let inQuotes = false;

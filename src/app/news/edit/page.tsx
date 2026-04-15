@@ -26,7 +26,7 @@ export default async function NewsEditPage({ searchParams }: NewsEditPageProps) 
       description="Select an existing news item to load it into the editor."
     >
       <section>
-        <NewsItemPicker newsItems={newsItems} initialQuery={query} />
+        <NewsItemPicker newsItems={newsItems} initialQuery={query} selectedSlug={slug} />
       </section>
       {slug ? (
         <NewsEditorForm

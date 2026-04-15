@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useId, useMemo, useState } from "react";
+import { ChangeEvent, useMemo, useState } from "react";
 import { useActionState } from "react";
 import {
   saveResultsDraft,
@@ -47,7 +47,7 @@ function parsePreview(csvText: string) {
 
   return {
     headers: splitLine(lines[0]),
-    rows: lines.slice(1, 6).map(splitLine),
+    rows: lines.slice(1).map(splitLine),
   };
 }
 
@@ -75,7 +75,6 @@ function InputField({ label, name, placeholder, defaultValue, errors }: InputPro
 export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUploadFormProps) {
   const [state, formAction, isPending] = useActionState(saveResultsDraft, initialState);
   const buttonLabel = isPending ? "Validating..." : "Create results draft PR";
-  const formId = useId();
   const currentYear = new Date().getFullYear().toString();
   const [raceIdValue, setRaceIdValue] = useState(initialValues?.raceId ?? "");
   const [yearValue, setYearValue] = useState(initialValues?.year ?? currentYear);
@@ -88,23 +87,43 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
   const liveErrors = liveIssues.filter((issue) => issue.level === "error");
   const liveWarnings = liveIssues.filter((issue) => issue.level === "warning");
   const blockingErrorsExist = liveErrors.length > 0;
-  const rowIssueLevels = useMemo(() => {
-    const issueMap = new Map<number, "error" | "warning">();
+  const errorRows = useMemo(() => {
+    const rows = new Set<number>();
 
-    for (const issue of liveIssues) {
-      if (!issue.row) {
-        continue;
+    for (const issue of liveErrors) {
+      if (issue.row) {
+        rows.add(issue.row);
       }
-
-      const existing = issueMap.get(issue.row);
-      if (existing === "error") {
-        continue;
-      }
-
-      issueMap.set(issue.row, issue.level);
     }
 
-    return issueMap;
+    return rows;
+  }, [liveErrors]);
+  const warningRows = useMemo(() => {
+    const rows = new Set<number>();
+
+    for (const issue of liveWarnings) {
+      if (issue.row) {
+        rows.add(issue.row);
+      }
+    }
+
+    return rows;
+  }, [liveWarnings]);
+  const rowMessages = useMemo(() => {
+    const map = new Map<number, string[]>();
+
+    for (const issue of liveIssues) {
+      if (issue.row) {
+        const existing = map.get(issue.row);
+        if (existing) {
+          existing.push(issue.message);
+        } else {
+          map.set(issue.row, [issue.message]);
+        }
+      }
+    }
+
+    return map;
   }, [liveIssues]);
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -136,11 +155,9 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
         if (target.name === "resultsYear") {
           setYearValue(target.value.trim() || "YYYY");
         }
-        if (target.name === "csvText") {
-          setCsvTextValue(normalizeLineEndings(target.value));
-        }
       }}
     >
+      <input type="hidden" name="csvText" value={csvTextValue} />
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <div className="grid gap-5">
           <label className="block space-y-2">
@@ -186,13 +203,18 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
             <p className="text-sm leading-6 text-stone-600">
               {selectedFileName
                 ? `Loaded file: ${selectedFileName}`
-                : "Upload a CSV file to populate the editor, or paste CSV directly below."}
+                : "Upload a CSV file to populate the preview and validation checks."}
             </p>
           </label>
           <p className="text-sm leading-6 text-stone-600">
-            Paste CSV data exactly as it should be written to `races/&lt;raceId&gt;/&lt;year&gt;.csv`.
-            This first version focuses on validation and draft creation; richer upload tooling can sit on top later.
+            The uploaded CSV is written exactly to `races/&lt;raceId&gt;/&lt;year&gt;.csv`.
+            Use the preview and validation panels to confirm content before creating a draft PR.
           </p>
+          {state.fieldErrors?.csvText?.map((error) => (
+            <p key={error} className="text-sm text-red-700">
+              {error}
+            </p>
+          ))}
         </div>
       </section>
 
@@ -211,26 +233,6 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
             File format: raw CSV written directly to the content repository
           </p>
         </div>
-        <label className="block space-y-2">
-          <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-            CSV data
-          </span>
-          <textarea
-            id={`${formId}-csv`}
-            name="csvText"
-            rows={16}
-            className="w-full rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-sm text-stone-50 outline-none transition focus:border-lime-200/40"
-            placeholder="Example: RunnerPosition,Surname,Firstname,Club,RunnerCategory,FinishTime,1,Smith,John,Local Club,M,42:11"
-            value={csvTextValue}
-            onChange={(event) => setCsvTextValue(normalizeLineEndings(event.target.value))}
-          />
-          {state.fieldErrors?.csvText?.map((error) => (
-            <p key={error} className="text-sm text-red-200">
-              {error}
-            </p>
-          ))}
-        </label>
-
         <div className="mt-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -270,11 +272,11 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
 
           <div className="rounded-2xl border border-white/10 bg-black/15 p-4">
             <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-              Live validation preview
+              CSV preview
             </p>
-            {csvTextValue.trim().length > 0 ? (
-              <div className="mt-3 space-y-4">
-                <div className="flex flex-wrap gap-3 text-sm">
+            {preview.headers.length > 0 ? (
+              <div className="mt-3 overflow-x-auto">
+                <div className="mb-3 flex flex-wrap gap-3 text-sm">
                   <span className="rounded-full bg-red-950/60 px-3 py-1 text-red-200">
                     Errors: {liveErrors.length}
                   </span>
@@ -282,92 +284,73 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
                     Warnings: {liveWarnings.length}
                   </span>
                 </div>
-
-                {liveErrors.length > 0 ? (
-                  <div>
-                    <p className="text-sm font-semibold text-red-200">Blocking errors</p>
-                    <ul className="mt-2 space-y-2 text-sm leading-6 text-stone-200">
-                      {liveErrors.slice(0, 8).map((issue) => (
-                        <li key={`error-${issue.row ?? "none"}-${issue.message}`}>
-                          {issue.row
-                            ? `Row ${issue.row}: ${issue.message}`
-                            : issue.message}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="text-sm leading-6 text-emerald-200">
-                    No blocking errors detected in the current CSV content.
+                {liveErrors.length > 0 && errorRows.size === 0 ? (
+                  <p className="mb-3 text-sm leading-6 text-red-200">
+                    Current errors are not tied to individual rows (for example, header-level issues), so no rows are highlighted.
                   </p>
-                )}
-
-                {liveWarnings.length > 0 ? (
-                  <div>
-                    <p className="text-sm font-semibold text-amber-200">Warnings</p>
-                    <ul className="mt-2 space-y-2 text-sm leading-6 text-stone-200">
-                      {liveWarnings.slice(0, 8).map((issue) => (
-                        <li key={`warning-${issue.row ?? "none"}-${issue.message}`}>
-                          {issue.row
-                            ? `Row ${issue.row}: ${issue.message}`
-                            : issue.message}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
                 ) : null}
-              </div>
-            ) : (
-              <p className="mt-3 text-sm leading-6 text-stone-400">
-                Upload or paste CSV content to see validation results before submitting.
-              </p>
-            )}
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-black/15 p-4">
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-              CSV preview
-            </p>
-            {preview.headers.length > 0 ? (
-              <div className="mt-3 overflow-x-auto">
-                <table className="min-w-full border-collapse text-left text-sm text-stone-200">
-                  <thead>
-                    <tr>
-                      {preview.headers.map((header) => (
-                        <th key={header} className="border-b border-white/10 px-2 py-2 font-semibold text-lime-100">
-                          {header}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.rows.map((row, rowIndex) => (
-                      <tr
-                        key={`${rowIndex}-${row.join("|")}`}
-                        className={
-                          rowIssueLevels.get(rowIndex + 2) === "error"
-                            ? "bg-red-950/30"
-                            : rowIssueLevels.get(rowIndex + 2) === "warning"
-                              ? "bg-amber-950/20"
-                              : undefined
-                        }
-                      >
-                        {preview.headers.map((header, columnIndex) => (
-                          <td key={`${header}-${columnIndex}`} className="border-b border-white/5 px-2 py-2 align-top">
-                            {row[columnIndex] ?? ""}
-                          </td>
+                {liveWarnings.length > 0 && warningRows.size === 0 ? (
+                  <p className="mb-3 text-sm leading-6 text-amber-200">
+                    Current warnings are not tied to individual rows (for example, header-level issues), so no rows are highlighted.
+                  </p>
+                ) : null}
+                <div className="max-h-[32rem] overflow-y-auto rounded-xl border border-white/10">
+                  <table className="min-w-full border-collapse text-left text-sm text-stone-200">
+                    <thead className="sticky top-0 bg-[#1f2b20]">
+                      <tr>
+                        {preview.headers.map((header) => (
+                          <th key={header} className="border-b border-white/10 px-2 py-2 font-semibold text-lime-100">
+                            {header}
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {preview.rows.map((row, rowIndex) => {
+                        const rowNumber = rowIndex + 2;
+                        const hasError = errorRows.has(rowNumber);
+                        const hasWarning = !hasError && warningRows.has(rowNumber);
+                        const tooltip = rowMessages.get(rowNumber)?.join("\n");
+
+                        return (
+                          <tr
+                            key={`${rowIndex}-${row.join("|")}`}
+                            title={tooltip}
+                            style={
+                              hasError
+                                ? { backgroundColor: "rgba(185, 28, 28, 0.45)", cursor: "help" }
+                                : hasWarning
+                                  ? { backgroundColor: "rgba(180, 120, 0, 0.40)", cursor: "help" }
+                                  : undefined
+                            }
+                          >
+                            {preview.headers.map((header, columnIndex) => (
+                              <td
+                                key={`${header}-${columnIndex}`}
+                                className={`border-b px-2 py-2 align-top ${
+                                  hasError
+                                    ? "border-red-300/25 text-red-50"
+                                    : hasWarning
+                                      ? "border-amber-300/25 text-amber-50"
+                                      : "border-white/5"
+                                }`}
+                              >
+                                {row[columnIndex] ?? ""}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
                 <p className="mt-3 text-sm leading-6 text-stone-400">
-                  Showing {preview.rows.length} preview rows.
+                  Showing all {preview.rows.length} data rows.
                 </p>
               </div>
             ) : (
               <p className="mt-3 text-sm leading-6 text-stone-400">
-                Upload or paste CSV content to preview headers and the first rows here.
+                Upload CSV content to preview headers and rows here.
               </p>
             )}
           </div>

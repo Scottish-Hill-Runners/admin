@@ -3,6 +3,11 @@ import { Octokit } from "@octokit/rest";
 import matter from "gray-matter";
 import { env } from "@/lib/env";
 import { contentConfig } from "@/lib/content-config";
+import {
+  getNewsSlugSuffixFromPath,
+  isIsoNewsDate,
+  suggestNextNewsSlugSuffix,
+} from "@/lib/news-slug";
 import type {
   NewsFrontmatter,
   NewsListItem,
@@ -44,7 +49,18 @@ type CachedGetEntry = {
   data: unknown;
 };
 
+type PullRequestListItem = {
+  number: number;
+};
+
+type PullRequestFileItem = {
+  filename: string;
+  status: string;
+};
+
 const githubGetCache = new Map<string, CachedGetEntry>();
+const MAX_OPEN_PULL_REQUESTS = 50;
+const MAX_PULL_REQUEST_FILES = 400;
 
 export function getGitHubClient(): Octokit | null {
   if (env.GITHUB_TOKEN) {
@@ -269,7 +285,7 @@ async function getRepositoryDirectory(path: string) {
   return response;
 }
 
-async function getRepositoryFiles(path: string, extension: string) {
+async function getRepositoryFiles(path: string, extension: string, ref = contentConfig.branch) {
   const client = getGitHubClient();
   if (!client) {
     throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
@@ -277,7 +293,7 @@ async function getRepositoryFiles(path: string, extension: string) {
 
   const repo = parseRepoSlug(contentConfig.repo);
   const normalizedPath = normalizeRepoPath(path).replace(/\/+$/, "");
-  const branchHeadSha = await getDefaultBranchSha(client, repo, contentConfig.branch);
+  const branchHeadSha = await getDefaultBranchSha(client, repo, ref);
   const commit = await requestGitHubGet<{ tree: { sha: string } }>(
     client,
     "GET /repos/{owner}/{repo}/git/commits/{commit_sha}",
@@ -322,6 +338,137 @@ async function getRepositoryFiles(path: string, extension: string) {
         path: relativePath,
       };
     });
+}
+
+async function listOpenPullRequestNumbers(client: Octokit, repo: RepoRef): Promise<number[]> {
+  const openPullRequests = await requestGitHubGet<PullRequestListItem[]>(
+    client,
+    "GET /repos/{owner}/{repo}/pulls",
+    {
+      owner: repo.owner,
+      repo: repo.repo,
+      state: "open",
+      sort: "updated",
+      direction: "desc",
+      per_page: MAX_OPEN_PULL_REQUESTS,
+      page: 1,
+    }
+  );
+
+  return openPullRequests.map((pullRequest) => pullRequest.number);
+}
+
+async function listNewsFilePathsInPullRequest(
+  client: Octokit,
+  repo: RepoRef,
+  pullRequestNumber: number,
+  yearPathPrefix: string
+): Promise<string[]> {
+  const files: string[] = [];
+  let page = 1;
+
+  while (files.length < MAX_PULL_REQUEST_FILES) {
+    const pullRequestFiles = await requestGitHubGet<PullRequestFileItem[]>(
+      client,
+      "GET /repos/{owner}/{repo}/pulls/{pull_number}/files",
+      {
+        owner: repo.owner,
+        repo: repo.repo,
+        pull_number: pullRequestNumber,
+        per_page: 100,
+        page,
+      }
+    );
+
+    if (pullRequestFiles.length === 0) {
+      break;
+    }
+
+    for (const file of pullRequestFiles) {
+      if (file.status === "removed") {
+        continue;
+      }
+
+      if (!file.filename.startsWith(yearPathPrefix) || !file.filename.endsWith(".md")) {
+        continue;
+      }
+
+      files.push(file.filename);
+      if (files.length >= MAX_PULL_REQUEST_FILES) {
+        break;
+      }
+    }
+
+    if (pullRequestFiles.length < 100) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return files;
+}
+
+export async function listReservedNewsSlugSuffixes(date: string): Promise<string[]> {
+  const normalizedDate = date.trim();
+  if (!isIsoNewsDate(normalizedDate)) {
+    return [];
+  }
+
+  const year = normalizedDate.slice(0, 4);
+  const yearPath = `news/${year}`;
+  const reservedSuffixes = new Set<string>();
+
+  try {
+    const branchFiles = await getRepositoryFiles(yearPath, ".md");
+    for (const entry of branchFiles) {
+      const suffix = getNewsSlugSuffixFromPath(normalizedDate, entry.path);
+      if (suffix !== null) {
+        reservedSuffixes.add(suffix);
+      }
+    }
+  } catch {
+    return [];
+  }
+
+  try {
+    const client = getGitHubClient();
+    if (!client) {
+      return Array.from(reservedSuffixes);
+    }
+
+    const repo = parseRepoSlug(contentConfig.repo);
+    const openPullRequestNumbers = await listOpenPullRequestNumbers(client, repo);
+    const yearPathPrefix = `${yearPath}/`;
+
+    const pullRequestFilePaths = await Promise.all(
+      openPullRequestNumbers.map((pullRequestNumber) =>
+        listNewsFilePathsInPullRequest(client, repo, pullRequestNumber, yearPathPrefix)
+      )
+    );
+
+    for (const filePaths of pullRequestFilePaths) {
+      for (const filePath of filePaths) {
+        const suffix = getNewsSlugSuffixFromPath(normalizedDate, filePath);
+        if (suffix !== null) {
+          reservedSuffixes.add(suffix);
+        }
+      }
+    }
+  } catch {
+    // Fall back to branch-only reservations if open PR scanning fails.
+  }
+
+  return Array.from(reservedSuffixes);
+}
+
+export async function suggestNewsSlugSuffixForDate(date: string): Promise<string> {
+  const reservedSuffixes = await listReservedNewsSlugSuffixes(date);
+  if (!reservedSuffixes.includes("")) {
+    return "";
+  }
+
+  return suggestNextNewsSlugSuffix(reservedSuffixes);
 }
 
 export async function listNewsDrafts(): Promise<NewsListItem[]> {

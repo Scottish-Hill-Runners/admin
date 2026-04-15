@@ -3,7 +3,16 @@
 import matter from "gray-matter";
 import { newsFormSchema, type NewsFormValues } from "@/lib/news-schema";
 import { contentConfig } from "@/lib/content-config";
-import { createContentPullRequest } from "@/lib/github";
+import {
+  createContentPullRequest,
+  listReservedNewsSlugSuffixes,
+  suggestNewsSlugSuffixForDate,
+} from "@/lib/github";
+import {
+  buildNewsSlug,
+  isIsoNewsDate,
+  suggestNextNewsSlugSuffix,
+} from "@/lib/news-slug";
 
 export type NewsActionState = {
   status: "idle" | "success" | "error";
@@ -11,15 +20,28 @@ export type NewsActionState = {
   fieldErrors?: Partial<Record<keyof NewsFormValues, string[]>>;
 };
 
-function buildNewsSlug(date: string, slugSuffix: string): string {
-  const normalizedDate = date.trim();
-  const normalizedSuffix = slugSuffix.trim();
+export type NewsSuffixSuggestionState = {
+  suffix: string;
+  message?: string;
+};
 
-  if (!normalizedSuffix) {
-    return normalizedDate;
+export async function suggestNewsSlugSuffixAction(
+  date: string
+): Promise<NewsSuffixSuggestionState> {
+  const normalizedDate = String(date).trim();
+  if (!isIsoNewsDate(normalizedDate)) {
+    return { suffix: "" };
   }
 
-  return `${normalizedDate}-${normalizedSuffix}`;
+  try {
+    const suffix = await suggestNewsSlugSuffixForDate(normalizedDate);
+    return { suffix };
+  } catch {
+    return {
+      suffix: "",
+      message: "Could not refresh the suffix suggestion. You can still enter one manually.",
+    };
+  }
 }
 
 function buildNewsMarkdown(values: NewsFormValues): string {
@@ -52,8 +74,33 @@ export async function saveNewsDraft(
 
   const values = parsed.data;
   const year = values.date.slice(0, 4);
-  const slug = buildNewsSlug(values.date, values.slugSuffix);
+  const originalSlug = String(formData.get("originalSlug") ?? "").trim();
+  const requestedSlug = buildNewsSlug(values.date, values.slugSuffix);
+  const requestedPath = `news/${year}/${requestedSlug}.md`;
+  const originalPath = originalSlug ? `news/${originalSlug}.md` : "";
+  const isEditingCurrentPath = originalPath === requestedPath;
+
+  const reservedSuffixes = await listReservedNewsSlugSuffixes(values.date);
+  const requestedSuffix = values.slugSuffix.trim();
+
+  let effectiveSuffix = requestedSuffix;
+  if (!isEditingCurrentPath && reservedSuffixes.includes(requestedSuffix)) {
+    if (requestedSuffix) {
+      return {
+        status: "error",
+        message: "Please pick another suffix. This date/suffix is already reserved.",
+        fieldErrors: {
+          slugSuffix: ["This suffix is already used for the selected date."],
+        },
+      };
+    }
+
+    effectiveSuffix = suggestNextNewsSlugSuffix(reservedSuffixes);
+  }
+
+  const slug = buildNewsSlug(values.date, effectiveSuffix);
   const filePath = `news/${year}/${slug}.md`;
+  const didAutoAssignSuffix = !requestedSuffix && effectiveSuffix.length > 0;
 
   try {
     const result = await createContentPullRequest({
@@ -72,7 +119,9 @@ export async function saveNewsDraft(
 
     return {
       status: "success",
-      message: `Opened PR #${result.prNumber}: ${result.prUrl}`,
+      message: didAutoAssignSuffix
+        ? `Opened PR #${result.prNumber}: ${result.prUrl} (suffix auto-set to ${effectiveSuffix})`
+        : `Opened PR #${result.prNumber}: ${result.prUrl}`,
     };
   } catch (error) {
     return {

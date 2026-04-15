@@ -1,10 +1,19 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState, useTransition, type ChangeEvent } from "react";
 import { useActionState } from "react";
-import { saveNewsDraft, type NewsActionState } from "@/app/news/actions";
+import {
+  saveNewsDraft,
+  suggestNewsSlugSuffixAction,
+  type NewsActionState,
+} from "@/app/news/actions";
 import { MarkdownEditorField } from "@/components/markdown-editor-field";
 import type { NewsFrontmatter } from "@/lib/content-types";
+import {
+  buildNewsSlug,
+  getNewsSlugSuffixFromSlug,
+  isIsoNewsDate,
+} from "@/lib/news-slug";
 
 const initialState: NewsActionState = {
   status: "idle",
@@ -16,6 +25,8 @@ type FieldProps = {
   type?: "text" | "date";
   placeholder?: string;
   defaultValue?: string;
+  value?: string;
+  onChange?: (event: ChangeEvent<HTMLInputElement>) => void;
   errors?: string[];
 };
 
@@ -25,6 +36,8 @@ type NewsEditorFormProps = {
     data: NewsFrontmatter;
     content: string;
   } | null;
+  suggestedDate?: string;
+  suggestedSlugSuffix?: string;
 };
 
 function getInitialSlugSuffix(initialValues: NewsEditorFormProps["initialValues"]): string {
@@ -34,28 +47,7 @@ function getInitialSlugSuffix(initialValues: NewsEditorFormProps["initialValues"
 
   const date = initialValues.data.date.trim();
   const slug = initialValues.slug.trim();
-  const filename = slug.split("/").pop() ?? slug;
-  if (!date || !filename || filename === date) {
-    return "";
-  }
-
-  const prefix = `${date}-`;
-  return filename.startsWith(prefix) ? filename.slice(prefix.length) : "";
-}
-
-function buildNewsSlug(date: string, suffix: string): string {
-  const normalizedDate = date.trim();
-  const normalizedSuffix = suffix.trim();
-
-  if (!normalizedDate) {
-    return "new-item-slug";
-  }
-
-  if (!normalizedSuffix) {
-    return normalizedDate;
-  }
-
-  return `${normalizedDate}-${normalizedSuffix}`;
+  return getNewsSlugSuffixFromSlug(date, slug);
 }
 
 function InputField({
@@ -64,6 +56,8 @@ function InputField({
   type = "text",
   placeholder,
   defaultValue,
+  value,
+  onChange,
   errors,
 }: FieldProps) {
   return (
@@ -75,7 +69,9 @@ function InputField({
         name={name}
         type={type}
         placeholder={placeholder}
-        defaultValue={defaultValue}
+        defaultValue={value === undefined ? defaultValue : undefined}
+        value={value}
+        onChange={onChange}
         className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
       />
       {errors?.map((error) => (
@@ -87,29 +83,49 @@ function InputField({
   );
 }
 
-export function NewsEditorForm({ initialValues }: NewsEditorFormProps) {
+export function NewsEditorForm({
+  initialValues,
+  suggestedDate,
+  suggestedSlugSuffix,
+}: NewsEditorFormProps) {
   const [state, formAction, isPending] = useActionState(saveNewsDraft, initialState);
+  const [isResuggesting, startResuggesting] = useTransition();
   const buttonLabel = isPending ? "Creating PR..." : "Create draft PR";
   const formId = useId();
-  const [dateValue, setDateValue] = useState(initialValues?.data.date ?? "");
-  const [slugSuffixValue, setSlugSuffixValue] = useState(getInitialSlugSuffix(initialValues));
+  const initialDateValue = initialValues?.data.date ?? suggestedDate ?? "";
+  const initialSuffixValue = initialValues
+    ? getInitialSlugSuffix(initialValues)
+    : (suggestedSlugSuffix ?? "");
+  const isEditingExistingItem = Boolean(initialValues);
+  const suggestionRequestCounter = useRef(0);
+  const [dateValue, setDateValue] = useState(initialDateValue);
+  const [slugSuffixValue, setSlugSuffixValue] = useState(initialSuffixValue);
+  const [suffixHint, setSuffixHint] = useState<string | null>(null);
   const slugValue = buildNewsSlug(dateValue, slugSuffixValue);
   const yearValue = dateValue.slice(0, 4);
 
+  const requestSuffixSuggestion = (nextDate: string) => {
+    if (isEditingExistingItem || !isIsoNewsDate(nextDate)) {
+      setSuffixHint(null);
+      return;
+    }
+
+    const requestId = suggestionRequestCounter.current + 1;
+    suggestionRequestCounter.current = requestId;
+
+    startResuggesting(async () => {
+      const result = await suggestNewsSlugSuffixAction(nextDate);
+      if (suggestionRequestCounter.current !== requestId) {
+        return;
+      }
+
+      setSlugSuffixValue(result.suffix);
+      setSuffixHint(result.message ?? null);
+    });
+  };
+
   return (
-    <form
-      action={formAction}
-      className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]"
-      onInput={(event) => {
-        const target = event.target as HTMLInputElement | HTMLTextAreaElement;
-        if (target.name === "date") {
-          setDateValue(target.value);
-        }
-        if (target.name === "slugSuffix") {
-          setSlugSuffixValue(target.value);
-        }
-      }}
-    >
+    <form action={formAction} className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <div className="grid gap-5">
           <InputField
@@ -123,16 +139,34 @@ export function NewsEditorForm({ initialValues }: NewsEditorFormProps) {
             label="Date"
             name="date"
             type="date"
-            defaultValue={initialValues?.data.date}
+            defaultValue={initialDateValue}
+            value={dateValue}
+            onChange={(event) => {
+              const nextDate = event.target.value;
+              setDateValue(nextDate);
+              requestSuffixSuggestion(nextDate);
+            }}
             errors={state.fieldErrors?.date}
           />
           <InputField
             label="Slug suffix (optional)"
             name="slugSuffix"
             placeholder="(set this to 1, 2 etc. if there is another post for the same date)"
-            defaultValue={getInitialSlugSuffix(initialValues)}
+            defaultValue={initialSuffixValue}
+            value={slugSuffixValue}
+            onChange={(event) => {
+              setSlugSuffixValue(event.target.value);
+              setSuffixHint(null);
+            }}
             errors={state.fieldErrors?.slugSuffix}
           />
+          {!initialValues ? (
+            <div className="space-y-1 text-sm leading-6 text-stone-600">
+              <p>Suggested suffix is based on existing news files plus open pull request drafts.</p>
+              <p>{isResuggesting ? "Refreshing suffix suggestion for this date..." : ""}</p>
+              {suffixHint ? <p className="text-amber-700">{suffixHint}</p> : null}
+            </div>
+          ) : null}
           <label className="block space-y-2">
             <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
               Excerpt
@@ -162,6 +196,7 @@ export function NewsEditorForm({ initialValues }: NewsEditorFormProps) {
             Target path: <span className="font-semibold text-white">news/{yearValue ? `${yearValue}/` : ""}{slugValue}.md</span>
           </p>
           <input type="hidden" name="slug" value={slugValue} readOnly />
+          <input type="hidden" name="originalSlug" value={initialValues?.slug ?? ""} readOnly />
           <p className="text-sm leading-6 text-stone-300">
             Frontmatter fields: title, date, excerpt
           </p>

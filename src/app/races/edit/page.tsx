@@ -32,6 +32,7 @@ export default async function RacesEditPage({ searchParams }: RacesEditPageProps
         <RaceItemPicker
           raceItems={raceItems}
           initialRaceQuery={raceQuery}
+          selectedRaceId={raceId}
           basePath="/races/edit"
         />
       </section>

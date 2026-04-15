@@ -42,6 +42,7 @@ export default async function ResultsEditPage({ searchParams }: ResultsEditPageP
         <RaceItemPicker
           raceItems={raceItems}
           initialRaceQuery={raceQuery}
+          selectedRaceId={raceId}
           resultsYear={resultsYear}
           basePath="/results/edit"
         />
