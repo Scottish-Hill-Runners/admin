@@ -5,11 +5,7 @@ const SURNAME_KEYS = ["Surname", "LastName"];
 const CLUB_KEYS = ["Club"];
 const CATEGORY_KEYS = ["RunnerCategory", "Category", "Cat"];
 const TIME_KEYS = ["FinishTime", "Time"];
-const ALLOWED_RUNNER_CATEGORIES = new Set(
-  "F,F40,F50,F60,F65,F70,F75,F80,M,M40,M50,M60,M65,M70,M75,M80,NB,NB40,NB50,NB60,NB65,NB70,NB75,NB80"
-    .split(",")
-    .map((category) => category.trim())
-);
+const RUNNER_CATEGORY_PATTERN = /^(M|F|NB?)\d{0,2}$/;
 
 export type CsvIssue = {
   row: number | null;
@@ -191,11 +187,11 @@ export function validateRaceResultsCsv(csvText: string): CsvIssue[] {
         level: "warning",
         message: "Missing runner category",
       });
-    } else if (!ALLOWED_RUNNER_CATEGORIES.has(category)) {
+    } else if (!RUNNER_CATEGORY_PATTERN.test(category)) {
       issues.push({
         row: rowNumber,
         level: "warning",
-        message: `Unexpected runner category '${category}'`,
+        message: `Unexpected runner category '${category}' (expected pattern: (M|F|NB?)\\d+)`,
       });
     }
   });
