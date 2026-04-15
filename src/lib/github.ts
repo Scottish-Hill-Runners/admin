@@ -102,8 +102,25 @@ function fromBase64(input: string): string {
 }
 
 function normalizeRepoPath(path: string): string {
-  const decoded = decodeURIComponent(path);
-  return decoded.replace(/^\/+/, "").replace(/^contents\/+/, "");
+  const decoded = decodeURIComponent(String(path).trim());
+
+  return decoded
+    .replace(/^\/+/, "")
+    .replace(/^(?:contents\/+)+/, "");
+}
+
+function toSafeRepoPathSegment(value: string): string | null {
+  const decoded = decodeURIComponent(String(value ?? "").trim());
+
+  if (!decoded || decoded === "." || decoded === "..") {
+    return null;
+  }
+
+  if (decoded.includes("/") || decoded.includes("\\")) {
+    return null;
+  }
+
+  return decoded;
 }
 
 function buildGitHubGetCacheKey(route: string, params: Record<string, unknown>): string {
@@ -137,6 +154,15 @@ function getErrorStatus(error: unknown): number | null {
   if (typeof responseStatus === "string") {
     const parsed = Number.parseInt(responseStatus, 10);
     return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  const message = (error as { message?: unknown }).message;
+  if (typeof message === "string") {
+    const matchedStatus = message.match(/\b(\d{3})\b/);
+    if (matchedStatus) {
+      const parsed = Number.parseInt(matchedStatus[1], 10);
+      return Number.isNaN(parsed) ? null : parsed;
+    }
   }
 
   return null;
@@ -551,11 +577,16 @@ export async function getNewsDraft(slug: string): Promise<
 
 export async function getRaceDraft(raceId: string): Promise<RaceInfoFormData | null> {
   try {
-    const file = await getRepositoryFile(`races/${raceId}/index.md`);
+    const safeRaceId = toSafeRepoPathSegment(raceId);
+    if (!safeRaceId) {
+      return null;
+    }
+
+    const file = await getRepositoryFile(`races/${safeRaceId}/index.md`);
     const parsed = matter(file);
 
     return {
-      raceId,
+      raceId: safeRaceId,
       title: String(parsed.data.title ?? ""),
       venue: String(parsed.data.venue ?? ""),
       distance: String(parsed.data.distance ?? ""),
@@ -584,12 +615,18 @@ export async function getRaceResultsDraft(
   | null
 > {
   try {
-    const file = await getRepositoryFile(`races/${raceId}/${year}.csv`);
+    const safeRaceId = toSafeRepoPathSegment(raceId);
+    const safeYear = toSafeRepoPathSegment(year);
+    if (!safeRaceId || !safeYear) {
+      return null;
+    }
+
+    const file = await getRepositoryFile(`races/${safeRaceId}/${safeYear}.csv`);
     const normalizedFile = file.replace(/\r\n?/g, "\n");
 
     return {
-      raceId,
-      year,
+      raceId: safeRaceId,
+      year: safeYear,
       csvText: normalizedFile.trim(),
     };
   } catch {
@@ -599,14 +636,19 @@ export async function getRaceResultsDraft(
 
 export async function listRaceResultsDrafts(raceId: string): Promise<RaceResultListItem[]> {
   try {
-    const entries = await getRepositoryDirectory(`races/${raceId}`);
+    const safeRaceId = toSafeRepoPathSegment(raceId);
+    if (!safeRaceId) {
+      return [];
+    }
+
+    const entries = await getRepositoryDirectory(`races/${safeRaceId}`);
 
     return entries
       .filter((entry) => entry.type === "file" && entry.name.endsWith(".csv"))
       .map((entry) => ({
-        raceId,
+        raceId: safeRaceId,
         year: entry.name.replace(/\.csv$/, ""),
-        path: `races/${raceId}/${entry.name}`,
+        path: `races/${safeRaceId}/${entry.name}`,
       }))
       .sort((left, right) => right.year.localeCompare(left.year));
   } catch {
