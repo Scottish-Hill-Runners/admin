@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" width="60" height="60" role="img" aria-label="Scottish Hill Runners admin icon">
+  <rect width="60" height="60" fill="#0065BD"/>
+  <path d="M0 0 L60 60 M0 60 L60 0" stroke="#FFFFFF" stroke-width="12" stroke-linecap="square"/>
+  <g transform="translate(30 30) rotate(-20) scale(1.48)" stroke="#0B1F33" stroke-width="2" stroke-linejoin="round">
+    <polygon points="-10,-3.5 -15,0 -10,3.5" fill="#E5C49A"/>
+    <polygon points="-15,0 -12.7,-1.5 -12.7,1.5" fill="#111827"/>
+    <rect x="-10" y="-3.5" width="18" height="7" rx="1.2" fill="#F2C94C"/>
+    <rect x="8" y="-3.5" width="2.5" height="7" fill="#D1D5DB"/>
+    <rect x="10.5" y="-3.5" width="4.5" height="7" rx="0.8" fill="#F299A1"/>
+  </g>
+</svg>

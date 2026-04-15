@@ -21,6 +21,9 @@ const monoFont = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "SHR Admin",
   description: "Editorial workspace for Scottish Hill Runners content management.",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

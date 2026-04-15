@@ -2,9 +2,12 @@
   "name": "shr-admin",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22 <25"
+  },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "NODE_OPTIONS=--max-old-space-size=4096 next dev",
+    "build": "NODE_OPTIONS=--max-old-space-size=6144 next build",
     "start": "next start",
     "lint": "eslint"
   },
