@@ -14,6 +14,8 @@ import {
   markdownShortcutPlugin,
   quotePlugin,
   Separator,
+  InsertTable,
+  tablePlugin,
   thematicBreakPlugin,
   toolbarPlugin,
   UndoRedo,
@@ -91,6 +93,7 @@ export function MdxEditorClient({ markdown, onChange, placeholder }: MdxEditorCl
     () => [
       headingsPlugin(),
       listsPlugin(),
+      tablePlugin(),
       quotePlugin(),
       thematicBreakPlugin(),
       linkPlugin({ validateUrl: isSafeEditorUrl }),
@@ -106,7 +109,9 @@ export function MdxEditorClient({ markdown, onChange, placeholder }: MdxEditorCl
             <Separator />
             <BoldItalicUnderlineToggles />
             <Separator />
-            <ListsToggle />
+            <ListsToggle options={["bullet", "number"]} />
+            <Separator />
+            <InsertTable />
             <Separator />
             <CreateLink />
           </>
