@@ -11,6 +11,7 @@ Initial MVP scope:
 - News editing
 - Race information editing
 - Race results CSV upload and validation
+- Calendar CSV editing (`calendar.csv`, row format `yyyy-mm-dd,RaceID`)
 
 ## Planned architecture
 
@@ -31,6 +32,7 @@ Initial MVP scope:
 - Interim signed-cookie editor session flow for approved emails while real magic-link infrastructure is still pending
 - Race metadata editor flow with validation and PR creation for `races/<raceId>/index.md`
 - Results CSV draft flow with server-side validation and PR creation for `races/<raceId>/<year>.csv`
+- Calendar CSV draft flow with grid editing, validation, and PR creation for `calendar.csv`
 
 ## Development
 

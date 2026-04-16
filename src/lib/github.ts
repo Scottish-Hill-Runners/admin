@@ -822,6 +822,24 @@ export async function getRaceResultsDraft(
   }
 }
 
+export async function getCalendarDraft(): Promise<
+  | {
+      csvText: string;
+    }
+  | null
+> {
+  try {
+    const file = await getRepositoryFile("calendar.csv");
+    const normalizedFile = file.replace(/\r\n?/g, "\n");
+
+    return {
+      csvText: normalizedFile.trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function listRaceResultsDrafts(raceId: string): Promise<RaceResultListItem[]> {
   try {
     const safeRaceId = toSafeRepoPathSegment(raceId);

@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import Link from "next/link";
 import { signOutEditor } from "@/app/sign-out/actions";
 import { contentConfig } from "@/lib/content-config";
 import { getEditorSession } from "@/lib/auth-session";
@@ -47,6 +48,36 @@ export async function EditorialShell({
 
           {session ? (
             <nav className="mt-5 flex flex-wrap items-center gap-3">
+              <Link
+                href="/"
+                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
+              >
+                Home
+              </Link>
+              <Link
+                href="/news"
+                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
+              >
+                News
+              </Link>
+              <Link
+                href="/races"
+                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
+              >
+                Races
+              </Link>
+              <Link
+                href="/results"
+                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
+              >
+                Results
+              </Link>
+              <Link
+                href="/calendar"
+                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
+              >
+                Calendar
+              </Link>
               {identity ? (
                 <p className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900">
                   Signed in as {identity}
