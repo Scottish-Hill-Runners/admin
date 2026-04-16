@@ -78,6 +78,12 @@ export async function EditorialShell({
               >
                 Calendar
               </Link>
+              <Link
+                href="/collections"
+                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
+              >
+                Collections
+              </Link>
               {identity ? (
                 <p className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900">
                   Signed in as {identity}

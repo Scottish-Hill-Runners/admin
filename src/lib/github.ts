@@ -31,6 +31,22 @@ type CreateContentPrInput = {
   branchName: string;
 };
 
+type CreateContentPrFileInput = {
+  path: string;
+  content: string;
+  encoding?: "utf8" | "base64";
+  commitMessage?: string;
+};
+
+type CreateContentPrWithFilesInput = {
+  title: string;
+  files: CreateContentPrFileInput[];
+  commitMessage: string;
+  prTitle: string;
+  prBody: string;
+  branchName: string;
+};
+
 type RepositoryDirectoryEntry = {
   name: string;
   path: string;
@@ -442,6 +458,34 @@ async function getDefaultBranchSha(client: Octokit, repo: RepoRef, branch: strin
   return response.object.sha;
 }
 
+async function getExistingFileSha(
+  client: Octokit,
+  repo: RepoRef,
+  path: string,
+  ref: string
+): Promise<string | undefined> {
+  try {
+    const existing = await requestGitHubGet<RepositoryDirectoryEntry[] | RepositoryFileEntry>(
+      client,
+      "GET /repos/{owner}/{repo}/contents/{path}",
+      {
+        owner: repo.owner,
+        repo: repo.repo,
+        path,
+        ref,
+      }
+    );
+
+    if (!Array.isArray(existing) && "sha" in existing) {
+      return existing.sha;
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
 async function getRepositoryFile(path: string) {
   const client = getGitHubClient();
   if (!client) {
@@ -466,6 +510,10 @@ async function getRepositoryFile(path: string) {
   }
 
   return fromBase64(response.content.replace(/\n/g, ""));
+}
+
+export async function getContentFile(path: string): Promise<string> {
+  return getRepositoryFile(path);
 }
 
 async function getRepositoryDirectory(path: string) {
@@ -840,6 +888,14 @@ export async function getCalendarDraft(): Promise<
   }
 }
 
+export async function getCollectionsYamlDraft(): Promise<string | null> {
+  try {
+    return await getRepositoryFile("collections.yaml");
+  } catch {
+    return null;
+  }
+}
+
 export async function listRaceResultsDrafts(raceId: string): Promise<RaceResultListItem[]> {
   try {
     const safeRaceId = toSafeRepoPathSegment(raceId);
@@ -888,25 +944,7 @@ export async function createContentPullRequest({
     sha: baseSha,
   });
 
-  let existingSha: string | undefined;
-  try {
-    const existing = await requestGitHubGet<RepositoryDirectoryEntry[] | RepositoryFileEntry>(
-      client,
-      "GET /repos/{owner}/{repo}/contents/{path}",
-      {
-      owner: repo.owner,
-      repo: repo.repo,
-      path: normalizedPath,
-      ref: baseBranch,
-      }
-    );
-
-    if (!Array.isArray(existing) && "sha" in existing) {
-      existingSha = existing.sha;
-    }
-  } catch {
-    existingSha = undefined;
-  }
+  const existingSha = await getExistingFileSha(client, repo, normalizedPath, baseBranch);
 
   await client.repos.createOrUpdateFileContents({
     owner: repo.owner,
@@ -931,6 +969,69 @@ export async function createContentPullRequest({
     title,
     path,
     branchName,
+    prNumber: pullRequest.data.number,
+    prUrl: pullRequest.data.html_url,
+  };
+}
+
+export async function createContentPullRequestWithFiles({
+  title,
+  files,
+  commitMessage,
+  prTitle,
+  prBody,
+  branchName,
+}: CreateContentPrWithFilesInput) {
+  if (files.length === 0) {
+    throw new Error("At least one file is required to create a pull request.");
+  }
+
+  const client = getGitHubClient();
+  if (!client) {
+    throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+  const baseBranch = contentConfig.branch;
+  const baseSha = await getDefaultBranchSha(client, repo, baseBranch);
+
+  await client.git.createRef({
+    owner: repo.owner,
+    repo: repo.repo,
+    ref: `refs/heads/${branchName}`,
+    sha: baseSha,
+  });
+
+  for (const file of files) {
+    const normalizedPath = normalizeRepoPath(file.path);
+    const existingSha = await getExistingFileSha(client, repo, normalizedPath, baseBranch);
+    const content =
+      file.encoding === "base64" ? file.content : toBase64(file.content);
+
+    await client.repos.createOrUpdateFileContents({
+      owner: repo.owner,
+      repo: repo.repo,
+      path: normalizedPath,
+      branch: branchName,
+      message: file.commitMessage ?? commitMessage,
+      content,
+      sha: existingSha,
+    });
+  }
+
+  const pullRequest = await client.pulls.create({
+    owner: repo.owner,
+    repo: repo.repo,
+    title: prTitle,
+    body: prBody,
+    head: branchName,
+    base: baseBranch,
+  });
+
+  return {
+    title,
+    branchName,
+    files: files.map((file) => normalizeRepoPath(file.path)),
     prNumber: pullRequest.data.number,
     prUrl: pullRequest.data.html_url,
   };
