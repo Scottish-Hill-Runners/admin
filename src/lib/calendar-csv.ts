@@ -84,7 +84,7 @@ export function validateCalendarCsv(
     if (columns.length !== 2) {
       issues.push({
         row: rowNumber,
-        level: "warning",
+        level: "error",
         message: `Expected 2 columns (date,raceId) but found ${columns.length}.`,
       });
     }
