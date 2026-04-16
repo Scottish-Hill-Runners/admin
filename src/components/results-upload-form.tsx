@@ -2,6 +2,7 @@
 
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 import {
   saveResultsDraft,
   type ResultsUploadState,
@@ -92,6 +93,7 @@ function InputField({ label, name, placeholder, defaultValue, errors }: InputPro
 }
 
 export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUploadFormProps) {
+  const router = useRouter();
   const [state, formAction, isPending] = useActionState(saveResultsDraft, initialState);
   const buttonLabel = isPending ? "Validating..." : "Create results draft PR";
   const currentYear = new Date().getFullYear().toString();
@@ -100,6 +102,7 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
   const [csvTextValue, setCsvTextValue] = useState(
     normalizeLineEndings(initialValues?.csvText ?? "")
   );
+  const [prepareNewsTemplate, setPrepareNewsTemplate] = useState(true);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const debouncedCsvTextValue = useDebouncedValue(csvTextValue, LIVE_VALIDATION_DEBOUNCE_MS);
   const preview = useMemo(() => parsePreview(debouncedCsvTextValue), [debouncedCsvTextValue]);
@@ -152,6 +155,14 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
 
     return map;
   }, [liveIssues]);
+
+  useEffect(() => {
+    if (state.status !== "success" || !state.redirectToNewsUrl) {
+      return;
+    }
+
+    router.push(state.redirectToNewsUrl);
+  }, [router, state.redirectToNewsUrl, state.status]);
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -237,6 +248,18 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
             The uploaded CSV is written exactly to `races/&lt;raceId&gt;/&lt;year&gt;.csv`.
             Use the preview and validation panels to confirm content before creating a draft PR.
           </p>
+          <label className="flex items-start gap-3 rounded-xl border border-stone-900/10 bg-stone-50 px-4 py-3">
+            <input
+              type="checkbox"
+              name="prepareNewsTemplate"
+              checked={prepareNewsTemplate}
+              onChange={(event) => setPrepareNewsTemplate(event.target.checked)}
+              className="mt-1 size-4 rounded border-stone-400 text-stone-900 focus:ring-stone-500"
+            />
+            <span className="text-sm leading-6 text-stone-700">
+              After creating the results PR, open a prefilled news draft template with winners (manual review and submit).
+            </span>
+          </label>
           {state.fieldErrors?.csvText?.map((error) => (
             <p key={error} className="text-sm text-red-700">
               {error}

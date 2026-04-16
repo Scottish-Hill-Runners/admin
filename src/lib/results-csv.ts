@@ -13,6 +13,19 @@ export type CsvIssue = {
   message: string;
 };
 
+export type RaceWinnerSummary = {
+  name: string;
+  club: string;
+  time: string;
+};
+
+export type RaceResultsWinnerSummary = {
+  overall: RaceWinnerSummary | null;
+  male: RaceWinnerSummary | null;
+  female: RaceWinnerSummary | null;
+  nonBinary: RaceWinnerSummary | null;
+};
+
 export function splitCsvLine(line: string): string[] {
   const values: string[] = [];
   let current = "";
@@ -78,6 +91,109 @@ function findValue(row: Record<string, string>, keys: string[]): string {
 
 function validateTime(time: string) {
   return /(\d?\d)[:.h](\d\d)(?:[:.m](\d\d))?/i.test(time);
+}
+
+function parseCategoryGroup(category: string): "male" | "female" | "nonBinary" | null {
+  const normalized = category.trim().toUpperCase();
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.startsWith("NB") || normalized === "N") {
+    return "nonBinary";
+  }
+
+  if (normalized.startsWith("M")) {
+    return "male";
+  }
+
+  if (normalized.startsWith("F")) {
+    return "female";
+  }
+
+  return null;
+}
+
+type WinnerCandidate = RaceWinnerSummary & {
+  position: number;
+};
+
+function toWinnerSummary(candidate: WinnerCandidate | null): RaceWinnerSummary | null {
+  if (!candidate) {
+    return null;
+  }
+
+  return {
+    name: candidate.name,
+    club: candidate.club,
+    time: candidate.time,
+  };
+}
+
+export function extractRaceResultsWinnerSummary(csvText: string): RaceResultsWinnerSummary {
+  const { rows } = parseCsv(csvText);
+
+  let overallWinner: WinnerCandidate | null = null;
+  let maleWinner: WinnerCandidate | null = null;
+  let femaleWinner: WinnerCandidate | null = null;
+  let nonBinaryWinner: WinnerCandidate | null = null;
+
+  for (const row of rows) {
+    const positionRaw = findValue(row, POSITION_KEYS);
+    const position = Number.parseInt(positionRaw, 10);
+    if (!Number.isFinite(position)) {
+      continue;
+    }
+
+    const name =
+      findValue(row, NAME_KEYS) ||
+      `${findValue(row, FIRST_NAME_KEYS)} ${findValue(row, SURNAME_KEYS)}`.trim();
+    const time = findValue(row, TIME_KEYS);
+    if (!name || !time) {
+      continue;
+    }
+
+    const candidate: WinnerCandidate = {
+      position,
+      name,
+      club: findValue(row, CLUB_KEYS),
+      time,
+    };
+
+    if (!overallWinner || candidate.position < overallWinner.position) {
+      overallWinner = candidate;
+    }
+
+    const categoryGroup = parseCategoryGroup(findValue(row, CATEGORY_KEYS));
+    if (!categoryGroup) {
+      continue;
+    }
+
+    if (categoryGroup === "male" && (!maleWinner || candidate.position < maleWinner.position)) {
+      maleWinner = candidate;
+      continue;
+    }
+
+    if (categoryGroup === "female" && (!femaleWinner || candidate.position < femaleWinner.position)) {
+      femaleWinner = candidate;
+      continue;
+    }
+
+    if (
+      categoryGroup === "nonBinary" &&
+      (!nonBinaryWinner || candidate.position < nonBinaryWinner.position)
+    ) {
+      nonBinaryWinner = candidate;
+    }
+  }
+
+  return {
+    overall: toWinnerSummary(overallWinner),
+    male: toWinnerSummary(maleWinner),
+    female: toWinnerSummary(femaleWinner),
+    nonBinary: toWinnerSummary(nonBinaryWinner),
+  };
 }
 
 export function validateRaceResultsCsv(csvText: string): CsvIssue[] {

@@ -2,7 +2,10 @@
 
 import { contentConfig } from "@/lib/content-config";
 import { createContentPullRequest } from "@/lib/github";
-import { validateRaceResultsCsv } from "@/lib/results-csv";
+import {
+  extractRaceResultsWinnerSummary,
+  validateRaceResultsCsv,
+} from "@/lib/results-csv";
 import {
   resultsUploadSchema,
   type ResultsUploadValues,
@@ -13,12 +16,127 @@ export type ResultsUploadState = {
   message?: string;
   issues?: string[];
   fieldErrors?: Partial<Record<keyof ResultsUploadValues, string[]>>;
+  redirectToNewsUrl?: string;
 };
+
+function formatWinnerLine(label: string, winner: { name: string; club: string; time: string } | null) {
+  if (!winner) {
+    return `- ${label}: not available in this CSV`;
+  }
+
+  const clubPart = winner.club ? ` (${winner.club})` : "";
+  return `- ${label}: ${winner.name}${clubPart} - ${winner.time}`;
+}
+
+function formatWinnerInline(winner: { name: string; club: string; time: string }) {
+  const clubPart = winner.club ? ` (${winner.club})` : "";
+  return `${winner.name}${clubPart} in ${winner.time}`;
+}
+
+function toRaceTitle(raceId: string): string {
+  return raceId
+    .split(/[-_]+/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function toOrdinal(day: number): string {
+  const remainder100 = day % 100;
+  if (remainder100 >= 11 && remainder100 <= 13) {
+    return `${day}th`;
+  }
+
+  const remainder10 = day % 10;
+  if (remainder10 === 1) {
+    return `${day}st`;
+  }
+
+  if (remainder10 === 2) {
+    return `${day}nd`;
+  }
+
+  if (remainder10 === 3) {
+    return `${day}rd`;
+  }
+
+  return `${day}th`;
+}
+
+function formatLeadDate(dateIso: string): string {
+  const parsed = new Date(`${dateIso}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return dateIso;
+  }
+
+  const weekday = parsed.toLocaleDateString("en-GB", {
+    weekday: "long",
+    timeZone: "UTC",
+  });
+  const month = parsed.toLocaleDateString("en-GB", {
+    month: "long",
+    timeZone: "UTC",
+  });
+
+  return `${weekday} ${toOrdinal(parsed.getUTCDate())} ${month}`;
+}
+
+function buildLeadSentence(
+  raceTitle: string,
+  leadDate: string,
+  winners: ReturnType<typeof extractRaceResultsWinnerSummary>
+): string {
+  if (winners.male && winners.female) {
+    return `Wins for ${formatWinnerInline(winners.male)} and ${formatWinnerInline(winners.female)} at the ${raceTitle} race on ${leadDate}.`;
+  }
+
+  if (winners.overall) {
+    return `Win for ${formatWinnerInline(winners.overall)} at the ${raceTitle} race on ${leadDate}.`;
+  }
+
+  return `Results are now available for the ${raceTitle} race on ${leadDate}.`;
+}
+
+function buildNewsPrefillUrl(raceId: string, year: string, csvText: string): string {
+  const today = new Date().toISOString().slice(0, 10);
+  const winners = extractRaceResultsWinnerSummary(csvText);
+  const raceTitle = toRaceTitle(raceId);
+  const leadDate = formatLeadDate(today);
+  const title = `${raceTitle} ${year} results`;
+  const excerpt = buildLeadSentence(raceTitle, leadDate, winners);
+  const content = [
+    `## ${raceTitle} ${year} results`,
+    "",
+    buildLeadSentence(raceTitle, leadDate, winners),
+    winners.nonBinary
+      ? `Top non-binary finisher: ${formatWinnerInline(winners.nonBinary)}.`
+      : "",
+    "",
+    "### Winners",
+    formatWinnerLine("Overall", winners.overall),
+    formatWinnerLine("Men", winners.male),
+    formatWinnerLine("Women", winners.female),
+    formatWinnerLine("Non-binary", winners.nonBinary),
+    "",
+    "Congratulations to all runners and thanks to organisers and volunteers.",
+  ].join("\n");
+
+  const params = new URLSearchParams({
+    fromResults: "1",
+    prefillDate: today,
+    prefillTitle: title,
+    prefillExcerpt: excerpt,
+    prefillContent: content,
+  });
+
+  return `/news?${params.toString()}`;
+}
 
 export async function saveResultsDraft(
   _previousState: ResultsUploadState,
   formData: FormData
 ): Promise<ResultsUploadState> {
+  const shouldPrepareNewsTemplate = formData.get("prepareNewsTemplate") === "on";
   const parsed = resultsUploadSchema.safeParse({
     raceId: formData.get("resultsRaceId"),
     year: formData.get("resultsYear"),
@@ -65,8 +183,13 @@ export async function saveResultsDraft(
 
     return {
       status: "success",
-      message: `Opened PR #${result.prNumber}: ${result.prUrl}`,
+      message: shouldPrepareNewsTemplate
+        ? `Opened PR #${result.prNumber}: ${result.prUrl}. Redirecting to a prefilled news template.`
+        : `Opened PR #${result.prNumber}: ${result.prUrl}`,
       issues: issueMessages,
+      redirectToNewsUrl: shouldPrepareNewsTemplate
+        ? buildNewsPrefillUrl(values.raceId, values.year, values.csvText)
+        : undefined,
     };
   } catch (error) {
     return {

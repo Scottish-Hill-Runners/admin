@@ -38,6 +38,12 @@ type NewsEditorFormProps = {
   } | null;
   suggestedDate?: string;
   suggestedSlugSuffix?: string;
+  prefillValues?: {
+    title?: string;
+    excerpt?: string;
+    content?: string;
+    fromResults?: boolean;
+  };
 };
 
 function getInitialSlugSuffix(initialValues: NewsEditorFormProps["initialValues"]): string {
@@ -87,6 +93,7 @@ export function NewsEditorForm({
   initialValues,
   suggestedDate,
   suggestedSlugSuffix,
+  prefillValues,
 }: NewsEditorFormProps) {
   const [state, formAction, isPending] = useActionState(saveNewsDraft, initialState);
   const [isResuggesting, startResuggesting] = useTransition();
@@ -103,6 +110,9 @@ export function NewsEditorForm({
   const [suffixHint, setSuffixHint] = useState<string | null>(null);
   const slugValue = buildNewsSlug(dateValue, slugSuffixValue);
   const yearValue = dateValue.slice(0, 4);
+  const initialTitleValue = initialValues?.data.title ?? prefillValues?.title ?? "";
+  const initialExcerptValue = initialValues?.data.excerpt ?? prefillValues?.excerpt ?? "";
+  const initialContentValue = initialValues?.content ?? prefillValues?.content ?? "";
 
   const requestSuffixSuggestion = (nextDate: string) => {
     if (isEditingExistingItem || !isIsoNewsDate(nextDate)) {
@@ -132,7 +142,7 @@ export function NewsEditorForm({
             label="Title"
             name="title"
             placeholder="(Give the post a descriptive title)"
-            defaultValue={initialValues?.data.title}
+            defaultValue={initialTitleValue}
             errors={state.fieldErrors?.title}
           />
           <InputField
@@ -163,6 +173,11 @@ export function NewsEditorForm({
           {!initialValues ? (
             <div className="space-y-1 text-sm leading-6 text-stone-600">
               <p>Suggested suffix is based on existing news files plus open pull request drafts.</p>
+              {prefillValues?.fromResults ? (
+                <p className="text-amber-700">
+                  Template generated from race results. Review and adjust before creating the news PR.
+                </p>
+              ) : null}
               <p>{isResuggesting ? "Refreshing suffix suggestion for this date..." : ""}</p>
               {suffixHint ? <p className="text-amber-700">{suffixHint}</p> : null}
             </div>
@@ -176,7 +191,7 @@ export function NewsEditorForm({
               rows={4}
               className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
               placeholder="Short summary shown in listings and previews."
-              defaultValue={initialValues?.data.excerpt}
+              defaultValue={initialExcerptValue}
             />
             {state.fieldErrors?.excerpt?.map((error) => (
               <p key={error} className="text-sm text-red-700">
@@ -209,7 +224,7 @@ export function NewsEditorForm({
           name="content"
           label="Body"
           placeholder="(Write the article body here)"
-          defaultValue={initialValues?.content}
+          defaultValue={initialContentValue}
           errors={state.fieldErrors?.content}
         />
 
