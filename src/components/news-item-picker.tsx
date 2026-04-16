@@ -42,10 +42,9 @@ export function NewsItemPicker({ newsItems, initialQuery, selectedSlug }: NewsIt
       return newsItems;
     }
 
-    return newsItems.filter((item) => {
-      return item.title.toLowerCase().includes(normalizedQuery) ||
-       item.date.includes(normalizedQuery);
-    });
+    return newsItems.filter((item) =>
+      item.slug.toLowerCase().includes(normalizedQuery)
+    );
   }, [newsItems, query]);
 
   const selectedNewsItem = useMemo(() => {
@@ -87,8 +86,7 @@ export function NewsItemPicker({ newsItems, initialQuery, selectedSlug }: NewsIt
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
             Editing now
           </p>
-          <p className="mt-1 font-semibold text-stone-900">{selectedNewsItem.title}</p>
-          {selectedNewsItem.date ? <p className="text-sm text-stone-600">{selectedNewsItem.date}</p> : null}
+          <p className="mt-1 font-semibold text-stone-900">{selectedNewsItem.slug.split("/").pop()}</p>
         </div>
       ) : null}
 
@@ -99,7 +97,7 @@ export function NewsItemPicker({ newsItems, initialQuery, selectedSlug }: NewsIt
               name="q"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Filter by title or date"
+              placeholder="Filter by slug"
               className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-900/30"
             />
           </div>
@@ -112,8 +110,7 @@ export function NewsItemPicker({ newsItems, initialQuery, selectedSlug }: NewsIt
                   href={`/news/edit?slug=${encodeURIComponent(item.slug)}${query ? `&q=${encodeURIComponent(query)}` : ""}`}
                   className="rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 transition hover:border-stone-900/25 hover:bg-stone-100"
                 >
-                  <p className="font-semibold text-stone-900">{item.title}</p>
-                  {item.date ? <p className="text-sm text-stone-500">{item.date}</p> : null}
+                  <p className="font-semibold text-stone-900">{item.slug.split("/").pop()}</p>
                 </Link>
               ))
             ) : (

@@ -1,12 +1,15 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { useActionState } from "react";
 import {
   saveResultsDraft,
   type ResultsUploadState,
 } from "@/app/races/results-actions";
 import { validateRaceResultsCsv } from "@/lib/results-csv";
+
+const LIVE_VALIDATION_DEBOUNCE_MS = 250;
+const PREVIEW_ROW_LIMIT = 300;
 
 const initialState: ResultsUploadState = {
   status: "idle",
@@ -26,7 +29,7 @@ type ResultsUploadFormProps = {
     year: string;
     csvText: string;
   } | null;
-  raceItems?: Array<{ raceId: string; title: string; venue?: string }>;
+  raceItems?: Array<{ raceId: string }>;
 };
 
 function normalizeLineEndings(value: string): string {
@@ -49,6 +52,22 @@ function parsePreview(csvText: string) {
     headers: splitLine(lines[0]),
     rows: lines.slice(1).map(splitLine),
   };
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedValue(value);
+    }, delayMs);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [delayMs, value]);
+
+  return debouncedValue;
 }
 
 function InputField({ label, name, placeholder, defaultValue, errors }: InputProps) {
@@ -82,11 +101,19 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
     normalizeLineEndings(initialValues?.csvText ?? "")
   );
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
-  const preview = useMemo(() => parsePreview(csvTextValue), [csvTextValue]);
-  const liveIssues = useMemo(() => validateRaceResultsCsv(csvTextValue), [csvTextValue]);
+  const debouncedCsvTextValue = useDebouncedValue(csvTextValue, LIVE_VALIDATION_DEBOUNCE_MS);
+  const preview = useMemo(() => parsePreview(debouncedCsvTextValue), [debouncedCsvTextValue]);
+  const liveIssues = useMemo(
+    () => validateRaceResultsCsv(debouncedCsvTextValue),
+    [debouncedCsvTextValue]
+  );
   const liveErrors = liveIssues.filter((issue) => issue.level === "error");
   const liveWarnings = liveIssues.filter((issue) => issue.level === "warning");
   const blockingErrorsExist = liveErrors.length > 0;
+  const previewRows = useMemo(
+    () => preview.rows.slice(0, PREVIEW_ROW_LIMIT),
+    [preview.rows]
+  );
   const errorRows = useMemo(() => {
     const rows = new Set<number>();
 
@@ -173,7 +200,7 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
               <option value="">Select a race...</option>
               {raceItems.map((item) => (
                 <option key={item.raceId} value={item.raceId}>
-                  {item.title} ({item.raceId})
+                  {item.raceId}
                 </option>
               ))}
             </select>
@@ -306,7 +333,7 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
                       </tr>
                     </thead>
                     <tbody>
-                      {preview.rows.map((row, rowIndex) => {
+                      {previewRows.map((row, rowIndex) => {
                         const rowNumber = rowIndex + 2;
                         const hasError = errorRows.has(rowNumber);
                         const hasWarning = !hasError && warningRows.has(rowNumber);
@@ -345,7 +372,9 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
                   </table>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-stone-400">
-                  Showing all {preview.rows.length} data rows.
+                  {preview.rows.length > PREVIEW_ROW_LIMIT
+                    ? `Showing first ${PREVIEW_ROW_LIMIT} of ${preview.rows.length} data rows.`
+                    : `Showing all ${preview.rows.length} data rows.`}
                 </p>
               </div>
             ) : (

@@ -50,10 +50,9 @@ export function RaceItemPicker({
       return raceItems;
     }
 
-    return raceItems.filter((item) => {
-      const haystack = `${item.title} ${item.raceId} ${item.venue}`.toLowerCase();
-      return haystack.includes(normalizedRaceQuery);
-    });
+    return raceItems.filter((item) =>
+      item.raceId.toLowerCase().includes(normalizedRaceQuery)
+    );
   }, [raceItems, raceQuery]);
 
   const selectedRaceItem = useMemo(() => {
@@ -95,9 +94,7 @@ export function RaceItemPicker({
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">
             Editing now
           </p>
-          <p className="mt-1 font-semibold text-stone-900">{selectedRaceItem.title}</p>
-          <p className="mt-1 text-sm text-stone-600">{selectedRaceItem.raceId}</p>
-          {selectedRaceItem.venue ? <p className="text-sm text-stone-500">{selectedRaceItem.venue}</p> : null}
+          <p className="mt-1 font-semibold text-stone-900">{selectedRaceItem.raceId}</p>
         </div>
       ) : null}
 
@@ -108,7 +105,7 @@ export function RaceItemPicker({
               name="raceQuery"
               value={raceQuery}
               onChange={(event) => setRaceQuery(event.target.value)}
-              placeholder="Filter by race title, ID, or venue"
+              placeholder="Filter by race ID"
               className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-stone-900/30"
             />
           </div>
@@ -120,9 +117,7 @@ export function RaceItemPicker({
                   href={`${basePath}?raceId=${encodeURIComponent(item.raceId)}${resultsYear ? `&resultsYear=${encodeURIComponent(resultsYear)}` : ""}${raceQuery ? `&raceQuery=${encodeURIComponent(raceQuery)}` : ""}`}
                   className="rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 transition hover:border-stone-900/25 hover:bg-stone-100"
                 >
-                  <p className="font-semibold text-stone-900">{item.title}</p>
-                  <p className="mt-1 text-sm text-stone-600">{item.raceId}</p>
-                  {item.venue ? <p className="text-sm text-stone-500">{item.venue}</p> : null}
+                  <p className="font-semibold text-stone-900">{item.raceId}</p>
                 </Link>
               ))
             ) : (

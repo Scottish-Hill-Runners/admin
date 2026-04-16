@@ -6,6 +6,19 @@ const optStr = z.preprocess(
   z.string().min(1).optional()
 );
 
+const boolWithDefaultFalse = z.preprocess((value) => {
+  if (value === undefined || value === null || value === "") {
+    return false;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(normalized);
+}, z.boolean());
+
 const envSchema = z.object({
   AUTH_SECRET: optStr,
   NEXTAUTH_URL: z.preprocess((v) => (v === "" ? undefined : v), z.url().optional()),
@@ -19,6 +32,7 @@ const envSchema = z.object({
   GITHUB_APP_ID: optStr,
   GITHUB_APP_PRIVATE_KEY: optStr,
   GITHUB_APP_INSTALLATION_ID: optStr,
+  GITHUB_DEBUG_PERF: boolWithDefaultFalse,
 });
 
 export const env = envSchema.parse({
@@ -34,4 +48,5 @@ export const env = envSchema.parse({
   GITHUB_APP_ID: process.env.GITHUB_APP_ID,
   GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,
   GITHUB_APP_INSTALLATION_ID: process.env.GITHUB_APP_INSTALLATION_ID,
+  GITHUB_DEBUG_PERF: process.env.GITHUB_DEBUG_PERF,
 });

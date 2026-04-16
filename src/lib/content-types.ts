@@ -16,8 +16,6 @@ export type NewsFrontmatter = {
 
 export type NewsListItem = {
   slug: string;
-  title: string;
-  date: string;
 };
 
 export type RaceInfoFormData = {
@@ -36,8 +34,6 @@ export type RaceInfoFormData = {
 
 export type RaceListItem = {
   raceId: string;
-  title: string;
-  venue: string;
 };
 
 export type RaceResultListItem = {

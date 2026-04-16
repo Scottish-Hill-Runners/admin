@@ -47,10 +47,13 @@ type RepositoryFileEntry = {
 type CachedGetEntry = {
   etag: string;
   data: unknown;
+  cachedAt: number;
+  lastAccessedAt: number;
 };
 
 type PullRequestListItem = {
   number: number;
+  updated_at?: string;
 };
 
 type PullRequestFileItem = {
@@ -59,8 +62,16 @@ type PullRequestFileItem = {
 };
 
 const githubGetCache = new Map<string, CachedGetEntry>();
+const GITHUB_CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_GITHUB_CACHE_ENTRIES = 250;
 const MAX_OPEN_PULL_REQUESTS = 50;
+const MAX_OPEN_PULL_REQUEST_AGE_DAYS = 30;
 const MAX_PULL_REQUEST_FILES = 400;
+const MAX_PR_FILE_SCAN_CONCURRENCY = 6;
+const MAX_NEWS_LIST_ITEMS = 24;
+const CACHE_SNAPSHOT_LOG_INTERVAL = 50;
+
+let githubRequestCounter = 0;
 
 export function getGitHubClient(): Octokit | null {
   if (env.GITHUB_TOKEN) {
@@ -131,6 +142,120 @@ function buildGitHubGetCacheKey(route: string, params: Record<string, unknown>):
   return `${route}:${JSON.stringify(sortedEntries)}`;
 }
 
+function isGitHubPerfDebugEnabled(): boolean {
+  return env.GITHUB_DEBUG_PERF;
+}
+
+function estimateApproxBytes(value: unknown): number {
+  if (typeof value === "string") {
+    return Buffer.byteLength(value, "utf8");
+  }
+
+  try {
+    return Buffer.byteLength(JSON.stringify(value), "utf8");
+  } catch {
+    return 0;
+  }
+}
+
+function logGitHubPerf(event: string, details: Record<string, unknown>): void {
+  if (!isGitHubPerfDebugEnabled()) {
+    return;
+  }
+
+  console.info(`[github-perf] ${event}`, details);
+}
+
+function logGitHubCacheSnapshotIfNeeded(): void {
+  if (!isGitHubPerfDebugEnabled()) {
+    return;
+  }
+
+  githubRequestCounter += 1;
+  if (githubRequestCounter % CACHE_SNAPSHOT_LOG_INTERVAL !== 0) {
+    return;
+  }
+
+  let approxBytes = 0;
+  for (const entry of githubGetCache.values()) {
+    approxBytes += estimateApproxBytes(entry.data);
+  }
+
+  logGitHubPerf("cache-snapshot", {
+    entries: githubGetCache.size,
+    approxRetainedBytes: approxBytes,
+  });
+}
+
+function pruneGitHubGetCache(now: number): void {
+  for (const [key, entry] of githubGetCache.entries()) {
+    if (now - entry.cachedAt > GITHUB_CACHE_TTL_MS) {
+      githubGetCache.delete(key);
+    }
+  }
+
+  if (githubGetCache.size <= MAX_GITHUB_CACHE_ENTRIES) {
+    return;
+  }
+
+  const candidates = Array.from(githubGetCache.entries()).sort(
+    (left, right) => left[1].lastAccessedAt - right[1].lastAccessedAt
+  );
+
+  const overflow = githubGetCache.size - MAX_GITHUB_CACHE_ENTRIES;
+  for (let index = 0; index < overflow; index += 1) {
+    const candidate = candidates[index];
+    if (candidate) {
+      githubGetCache.delete(candidate[0]);
+    }
+  }
+}
+
+function isPullRequestRecent(updatedAt: string | undefined): boolean {
+  if (!updatedAt) {
+    return true;
+  }
+
+  const updatedAtMs = Date.parse(updatedAt);
+  if (Number.isNaN(updatedAtMs)) {
+    return true;
+  }
+
+  const maxAgeMs = MAX_OPEN_PULL_REQUEST_AGE_DAYS * 24 * 60 * 60 * 1000;
+  return Date.now() - updatedAtMs <= maxAgeMs;
+}
+
+async function mapWithConcurrency<T, U>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<U>
+): Promise<U[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const results = new Array<U>(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+
+      if (currentIndex >= items.length) {
+        break;
+      }
+
+      results[currentIndex] = await mapper(items[currentIndex]);
+    }
+  }
+
+  const workerCount = Math.min(Math.max(concurrency, 1), items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  return results;
+}
+
 function getErrorStatus(error: unknown): number | null {
   if (typeof error !== "object" || error === null) {
     return null;
@@ -173,8 +298,23 @@ async function requestGitHubGet<T>(
   route: string,
   params: Record<string, unknown>
 ): Promise<T> {
+  const requestStartedAt = Date.now();
+  const requestStartedPerf = isGitHubPerfDebugEnabled() ? performance.now() : 0;
+
+  pruneGitHubGetCache(requestStartedAt);
   const cacheKey = buildGitHubGetCacheKey(route, params);
-  const cached = githubGetCache.get(cacheKey);
+  const existingCached = githubGetCache.get(cacheKey);
+  const cachedIsFresh =
+    existingCached !== undefined && requestStartedAt - existingCached.cachedAt <= GITHUB_CACHE_TTL_MS;
+  const cached = cachedIsFresh ? existingCached : undefined;
+
+  if (!cachedIsFresh && existingCached) {
+    githubGetCache.delete(cacheKey);
+  }
+
+  if (cached) {
+    cached.lastAccessedAt = requestStartedAt;
+  }
 
   const headers = cached?.etag ? { "if-none-match": cached.etag } : undefined;
 
@@ -188,13 +328,35 @@ async function requestGitHubGet<T>(
     const etag = Array.isArray(etagHeader) ? etagHeader[0] : etagHeader;
 
     if (typeof etag === "string" && etag.length > 0) {
-      githubGetCache.set(cacheKey, { etag, data: response.data });
+      const now = Date.now();
+      githubGetCache.set(cacheKey, {
+        etag,
+        data: response.data,
+        cachedAt: now,
+        lastAccessedAt: now,
+      });
+      pruneGitHubGetCache(now);
     }
+
+    logGitHubPerf("request", {
+      route,
+      durationMs: Math.round((isGitHubPerfDebugEnabled() ? performance.now() : 0) - requestStartedPerf),
+      cacheStatus: cached ? "etag-refresh" : "miss",
+      approxResponseBytes: estimateApproxBytes(response.data),
+    });
+    logGitHubCacheSnapshotIfNeeded();
 
     return response.data as T;
   } catch (error) {
     if (getErrorStatus(error) === 304) {
       if (cached) {
+        logGitHubPerf("request", {
+          route,
+          durationMs: Math.round((isGitHubPerfDebugEnabled() ? performance.now() : 0) - requestStartedPerf),
+          cacheStatus: "revalidated-hit",
+          approxResponseBytes: estimateApproxBytes(cached.data),
+        });
+        logGitHubCacheSnapshotIfNeeded();
         return cached.data as T;
       }
 
@@ -206,11 +368,32 @@ async function requestGitHubGet<T>(
         : retryEtagHeader;
 
       if (typeof retryEtag === "string" && retryEtag.length > 0) {
-        githubGetCache.set(cacheKey, { etag: retryEtag, data: retryResponse.data });
+        const now = Date.now();
+        githubGetCache.set(cacheKey, {
+          etag: retryEtag,
+          data: retryResponse.data,
+          cachedAt: now,
+          lastAccessedAt: now,
+        });
+        pruneGitHubGetCache(now);
       }
+
+      logGitHubPerf("request", {
+        route,
+        durationMs: Date.now() - requestStartedAt,
+        cacheStatus: "revalidate-no-cache-retry",
+        approxResponseBytes: estimateApproxBytes(retryResponse.data),
+      });
+      logGitHubCacheSnapshotIfNeeded();
 
       return retryResponse.data as T;
     }
+
+    logGitHubPerf("request-error", {
+      route,
+      durationMs: Date.now() - requestStartedAt,
+      status: getErrorStatus(error),
+    });
 
     throw error;
   }
@@ -319,51 +502,48 @@ async function getRepositoryFiles(path: string, extension: string, ref = content
 
   const repo = parseRepoSlug(contentConfig.repo);
   const normalizedPath = normalizeRepoPath(path).replace(/\/+$/, "");
-  const branchHeadSha = await getDefaultBranchSha(client, repo, ref);
-  const commit = await requestGitHubGet<{ tree: { sha: string } }>(
-    client,
-    "GET /repos/{owner}/{repo}/git/commits/{commit_sha}",
-    {
-    owner: repo.owner,
-    repo: repo.repo,
-    commit_sha: branchHeadSha,
+  const fileEntries: Array<{ name: string; path: string }> = [];
+  const directoriesToScan: string[] = [normalizedPath];
+
+  while (directoriesToScan.length > 0) {
+    const currentPath = directoriesToScan.pop();
+    if (!currentPath) {
+      continue;
     }
-  );
 
-  const treeResponse = await requestGitHubGet<{
-    tree: Array<{ type?: string; path?: string }>;
-  }>(
-    client,
-    "GET /repos/{owner}/{repo}/git/trees/{tree_sha}",
-    {
-    owner: repo.owner,
-    repo: repo.repo,
-    tree_sha: commit.tree.sha,
-    recursive: "1",
+    const response = await requestGitHubGet<RepositoryDirectoryEntry[] | RepositoryFileEntry>(
+      client,
+      "GET /repos/{owner}/{repo}/contents/{path}",
+      {
+        owner: repo.owner,
+        repo: repo.repo,
+        path: currentPath,
+        ref,
+      }
+    );
+
+    if (!Array.isArray(response)) {
+      continue;
     }
-  );
 
-  return treeResponse.tree
-    .filter(
-      (entry) =>
-        entry.type === "blob" &&
-        typeof entry.path === "string" &&
-        entry.path.startsWith(`${normalizedPath}/`) &&
-        entry.path.endsWith(extension)
-    )
-    .map((entry) => {
-      const relativePath = String(entry.path);
-      const name = relativePath.split("/").pop();
-
-      if (!name) {
-        throw new Error(`Invalid repository path: ${relativePath}`);
+    for (const entry of response) {
+      if (entry.type === "dir") {
+        directoriesToScan.push(entry.path);
+        continue;
       }
 
-      return {
-        name,
-        path: relativePath,
-      };
-    });
+      if (entry.type !== "file" || !entry.path.endsWith(extension)) {
+        continue;
+      }
+
+      fileEntries.push({
+        name: entry.name,
+        path: entry.path,
+      });
+    }
+  }
+
+  return fileEntries;
 }
 
 async function listOpenPullRequestNumbers(client: Octokit, repo: RepoRef): Promise<number[]> {
@@ -381,7 +561,9 @@ async function listOpenPullRequestNumbers(client: Octokit, repo: RepoRef): Promi
     }
   );
 
-  return openPullRequests.map((pullRequest) => pullRequest.number);
+  return openPullRequests
+    .filter((pullRequest) => isPullRequestRecent(pullRequest.updated_at))
+    .map((pullRequest) => pullRequest.number);
 }
 
 async function listNewsFilePathsInPullRequest(
@@ -467,10 +649,11 @@ export async function listReservedNewsSlugSuffixes(date: string): Promise<string
     const openPullRequestNumbers = await listOpenPullRequestNumbers(client, repo);
     const yearPathPrefix = `${yearPath}/`;
 
-    const pullRequestFilePaths = await Promise.all(
-      openPullRequestNumbers.map((pullRequestNumber) =>
+    const pullRequestFilePaths = await mapWithConcurrency(
+      openPullRequestNumbers,
+      MAX_PR_FILE_SCAN_CONCURRENCY,
+      (pullRequestNumber) =>
         listNewsFilePathsInPullRequest(client, repo, pullRequestNumber, yearPathPrefix)
-      )
     );
 
     for (const filePaths of pullRequestFilePaths) {
@@ -499,22 +682,38 @@ export async function suggestNewsSlugSuffixForDate(date: string): Promise<string
 
 export async function listNewsDrafts(): Promise<NewsListItem[]> {
   try {
-    const markdownFiles = (await getRepositoryFiles("news", ".md"))
+    const entries = await getRepositoryDirectory("news");
+    const years = entries
+      .filter((entry) => entry.type === "dir")
+      .map((entry) => entry.name)
+      .sort((left, right) => right.localeCompare(left));
+
+    const markdownFiles: Array<{ name: string; path: string }> = [];
+
+    for (const year of years) {
+      if (markdownFiles.length >= MAX_NEWS_LIST_ITEMS) {
+        break;
+      }
+
+      const yearEntries = await getRepositoryDirectory(`news/${year}`);
+      for (const entry of yearEntries) {
+        if (entry.type !== "file" || !entry.name.endsWith(".md")) {
+          continue;
+        }
+
+        markdownFiles.push({
+          name: entry.name,
+          path: entry.path,
+        });
+      }
+    }
+
+    const items = markdownFiles
       .sort((left, right) => right.name.localeCompare(left.name))
-      .slice(0, 24);
-
-    const items = await Promise.all(
-      markdownFiles.map(async (entry) => {
-        const slug = entry.path.replace(/^news\//, "").replace(/\.md$/, "");
-        const draft = await getNewsDraft(slug);
-
-        return {
-          slug,
-          title: draft?.data.title || slug,
-          date: draft?.data.date || "",
-        } satisfies NewsListItem;
-      })
-    );
+      .slice(0, MAX_NEWS_LIST_ITEMS)
+      .map((entry) => ({
+        slug: entry.path.replace(/^news\//, "").replace(/\.md$/, ""),
+      }) satisfies NewsListItem);
 
     return items;
   } catch {
@@ -529,18 +728,7 @@ export async function listRaceDrafts(): Promise<RaceListItem[]> {
       .filter((entry) => entry.type === "dir")
       .sort((left, right) => left.name.localeCompare(right.name));
 
-    const items = await Promise.all(
-      directories.map(async (entry) => {
-        const raceId = entry.name;
-        const draft = await getRaceDraft(raceId);
-
-        return {
-          raceId,
-          title: draft?.title || raceId,
-          venue: draft?.venue || "",
-        } satisfies RaceListItem;
-      })
-    );
+    const items = directories.map((entry) => ({ raceId: entry.name }) satisfies RaceListItem);
 
     return items;
   } catch {
