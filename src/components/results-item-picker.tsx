@@ -21,10 +21,10 @@ export function ResultsItemPicker({
   const router = useRouter();
   const searchParams = useSearchParams();
   const filteredResultItems = useMemo(() => resultItems, [resultItems]);
-  const selectedYear = searchParams.get("resultsYear") ?? "";
+  const selectedYear = searchParams.get("year") ?? searchParams.get("resultsYear") ?? "";
 
   function buildResultsHref(year: string, itemRaceId: string): string {
-    return `${basePath}?raceId=${encodeURIComponent(itemRaceId)}&resultsYear=${encodeURIComponent(year)}${raceQuery ? `&raceQuery=${encodeURIComponent(raceQuery)}` : ""}`;
+    return `${basePath}?raceId=${encodeURIComponent(itemRaceId)}&year=${encodeURIComponent(year)}${raceQuery ? `&raceQuery=${encodeURIComponent(raceQuery)}` : ""}`;
   }
 
   return (

@@ -2,11 +2,12 @@ import { EditorialShell } from "@/components/editorial-shell";
 import { SignInForm } from "@/components/sign-in-form";
 
 type SignInPageProps = {
-  searchParams?: Promise<{ error?: string; status?: string }>;
+  searchParams?: Promise<{ error?: string; status?: string; callbackUrl?: string }>;
 };
 
 export default async function SignInPage({ searchParams }: SignInPageProps) {
   const params = await searchParams;
+  const callbackUrl = params?.callbackUrl;
 
   return (
     <EditorialShell
@@ -16,7 +17,7 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
     >
       <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
         <article className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
-          <SignInForm />
+          <SignInForm callbackUrl={callbackUrl} />
         </article>
 
         <article className="rounded-[1.5rem] border border-stone-900/10 bg-[#172119] p-6 text-stone-50 shadow-[0_22px_55px_rgba(23,33,25,0.24)]">

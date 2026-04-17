@@ -114,7 +114,7 @@ export function RaceItemPicker({
               filteredRaceItems.map((item) => (
                 <Link
                   key={item.raceId}
-                  href={`${basePath}?raceId=${encodeURIComponent(item.raceId)}${resultsYear ? `&resultsYear=${encodeURIComponent(resultsYear)}` : ""}${raceQuery ? `&raceQuery=${encodeURIComponent(raceQuery)}` : ""}`}
+                  href={`${basePath}?raceId=${encodeURIComponent(item.raceId)}${resultsYear ? `&year=${encodeURIComponent(resultsYear)}` : ""}${raceQuery ? `&raceQuery=${encodeURIComponent(raceQuery)}` : ""}`}
                   className="rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 transition hover:border-stone-900/25 hover:bg-stone-100"
                 >
                   <p className="font-semibold text-stone-900">{item.raceId}</p>

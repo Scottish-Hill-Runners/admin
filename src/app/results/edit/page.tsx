@@ -12,17 +12,34 @@ import { requireEditorAccess } from "@/lib/route-protection";
 type ResultsEditPageProps = {
   searchParams?: Promise<{
     raceId?: string;
+    year?: string;
     resultsYear?: string;
     raceQuery?: string;
   }>;
 };
 
 export default async function ResultsEditPage({ searchParams }: ResultsEditPageProps) {
-  await requireEditorAccess();
   const params = await searchParams;
   const raceId = params?.raceId?.trim();
-  const resultsYear = params?.resultsYear?.trim();
+  const year = params?.year?.trim();
+  const resultsYear = year || params?.resultsYear?.trim();
   const raceQuery = params?.raceQuery?.trim() ?? "";
+
+  const callbackParams = new URLSearchParams();
+  if (raceId) {
+    callbackParams.set("raceId", raceId);
+  }
+  if (resultsYear) {
+    callbackParams.set("year", resultsYear);
+  }
+  if (raceQuery) {
+    callbackParams.set("raceQuery", raceQuery);
+  }
+
+  const callbackUrl = callbackParams.toString()
+    ? `/results/edit?${callbackParams.toString()}`
+    : "/results/edit";
+  await requireEditorAccess({ callbackUrl });
 
   const [raceItems, resultInitialValues, resultItems] = await Promise.all([
     listRaceDrafts(),
@@ -64,6 +81,17 @@ export default async function ResultsEditPage({ searchParams }: ResultsEditPageP
           year={resultsYear}
           csvText={resultInitialValues.csvText}
         />
+      ) : null}
+
+      {raceId && resultsYear && !resultInitialValues ? (
+        <section className="rounded-[1.5rem] border border-amber-500/40 bg-amber-100/80 p-6 text-amber-900 shadow-[0_10px_30px_rgba(120,53,15,0.12)]">
+          <p className="text-sm font-semibold uppercase tracking-[0.16em]">
+            Results file not found
+          </p>
+          <p className="mt-2 text-sm leading-6">
+            Could not load races/{raceId}/{resultsYear}.csv. Check the race ID and year in the link, or choose an existing results file from the picker.
+          </p>
+        </section>
       ) : null}
     </EditorialShell>
   );

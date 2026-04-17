@@ -2,7 +2,22 @@
 
 import { signIn } from "next-auth/react";
 
-export function SignInForm() {
+type SignInFormProps = {
+  callbackUrl?: string;
+};
+
+function toSafeCallbackUrl(value: string | undefined): string {
+  const normalized = String(value ?? "").trim();
+  if (!normalized.startsWith("/") || normalized.startsWith("//")) {
+    return "/";
+  }
+
+  return normalized;
+}
+
+export function SignInForm({ callbackUrl }: SignInFormProps) {
+  const nextCallbackUrl = toSafeCallbackUrl(callbackUrl);
+
   return (
     <div className="grid gap-5">
       <p className="text-sm leading-6 text-stone-600">
@@ -12,7 +27,7 @@ export function SignInForm() {
       <div className="flex flex-col gap-3">
         <button
           type="button"
-          onClick={() => signIn("github", { callbackUrl: "/" })}
+          onClick={() => signIn("github", { callbackUrl: nextCallbackUrl })}
           className="flex w-fit items-center gap-2 rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-stone-50 transition hover:bg-stone-700"
         >
           <svg
@@ -27,7 +42,7 @@ export function SignInForm() {
         </button>
         <button
           type="button"
-          onClick={() => signIn("google", { callbackUrl: "/" })}
+          onClick={() => signIn("google", { callbackUrl: nextCallbackUrl })}
           className="flex w-fit items-center gap-2 rounded-full border border-stone-300 bg-white px-5 py-3 text-sm font-semibold text-stone-900 transition hover:bg-stone-50"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true" className="size-4">
