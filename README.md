@@ -45,22 +45,27 @@ Install dependencies and start the dev server:
 npm run dev
 ```
 
-For GitHub OAuth auth, configure these settings in `.env.local`:
+For OAuth auth, configure one or more provider settings in `.env.local`:
 
 - `AUTH_SECRET`
 - `NEXTAUTH_URL`
 - `GITHUB_CLIENT_ID`
 - `GITHUB_CLIENT_SECRET`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `MICROSOFT_ENTRA_ID_CLIENT_ID`
+- `MICROSOFT_ENTRA_ID_CLIENT_SECRET`
+- `MICROSOFT_ENTRA_ID_TENANT_ID`
 - `EDITOR_GITHUB_ALLOWLIST`
 
 For GitHub-backed writes to the content repository, configure one of these options:
 
 - Personal access token:
-	- `GITHUB_TOKEN`
+  - `GITHUB_TOKEN`
 - GitHub App installation auth:
-	- `GITHUB_APP_ID`
-	- `GITHUB_APP_PRIVATE_KEY`
-	- `GITHUB_APP_INSTALLATION_ID`
+  - `GITHUB_APP_ID`
+  - `GITHUB_APP_PRIVATE_KEY`
+  - `GITHUB_APP_INSTALLATION_ID`
 
 ## Next implementation steps
 
