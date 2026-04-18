@@ -1,6 +1,8 @@
 "use client";
 
+import { useActionState } from "react";
 import { signIn } from "next-auth/react";
+import { requestMagicLink, type RequestMagicLinkState } from "@/app/sign-in/actions";
 
 type SignInFormProps = {
   callbackUrl?: string;
@@ -8,6 +10,7 @@ type SignInFormProps = {
     github: boolean;
     google: boolean;
     microsoftEntraId: boolean;
+    emailMagicLink: boolean;
   };
 };
 
@@ -22,13 +25,20 @@ function toSafeCallbackUrl(value: string | undefined): string {
 
 export function SignInForm({ callbackUrl, providers }: SignInFormProps) {
   const nextCallbackUrl = toSafeCallbackUrl(callbackUrl);
-  const hasVisibleProviders =
+  const hasOAuthProvider =
     providers.github || providers.google || providers.microsoftEntraId;
+  const hasVisibleProviders = hasOAuthProvider || providers.emailMagicLink;
+
+  const initialMagicLinkState: RequestMagicLinkState = { status: "idle" };
+  const [magicLinkState, magicLinkAction, isMagicLinkPending] = useActionState(
+    requestMagicLink,
+    initialMagicLinkState
+  );
 
   return (
     <div className="grid gap-5">
       <p className="text-sm leading-6 text-stone-600">
-        Sign in with your GitHub, Google, or Microsoft account to access the editorial
+        Sign in with your GitHub, Google, Microsoft, or email account to access the editorial
         tools. Any authenticated user may contribute.
       </p>
       <div className="flex flex-col gap-3">
@@ -100,6 +110,54 @@ export function SignInForm({ callbackUrl, providers }: SignInFormProps) {
           </p>
         ) : null}
       </div>
+
+      {providers.emailMagicLink ? (
+        <>
+          {hasOAuthProvider ? (
+            <div className="flex items-center gap-3">
+              <hr className="flex-1 border-stone-200" />
+              <span className="text-xs text-stone-400">or</span>
+              <hr className="flex-1 border-stone-200" />
+            </div>
+          ) : null}
+
+          {magicLinkState.status === "sent" ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="text-sm font-semibold text-emerald-800">Check your email</p>
+              <p className="mt-1 text-sm text-emerald-700">
+                We sent a sign-in link. It expires in 15 minutes.
+              </p>
+            </div>
+          ) : (
+            <form action={magicLinkAction} className="grid gap-3">
+              <label htmlFor="sign-in-email" className="text-sm font-medium text-stone-700">
+                Sign in with email
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="sign-in-email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  placeholder="you@example.com"
+                  className="min-w-0 flex-1 rounded-full border border-stone-300 bg-white px-4 py-2.5 text-sm text-stone-900 placeholder-stone-400 focus:border-stone-500 focus:outline-none focus:ring-2 focus:ring-stone-300"
+                />
+                <button
+                  type="submit"
+                  disabled={isMagicLinkPending}
+                  className="rounded-full bg-stone-700 px-5 py-2.5 text-sm font-semibold text-stone-50 transition hover:bg-stone-600 disabled:opacity-60"
+                >
+                  {isMagicLinkPending ? "Sending\u2026" : "Send link"}
+                </button>
+              </div>
+              {magicLinkState.status === "error" ? (
+                <p className="text-sm text-red-700">{magicLinkState.error}</p>
+              ) : null}
+            </form>
+          )}
+        </>
+      ) : null}
     </div>
   );
 }
