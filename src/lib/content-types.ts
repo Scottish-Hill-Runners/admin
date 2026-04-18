@@ -76,3 +76,13 @@ export type ChampionshipInfoFormData = {
 export type ChampionshipListItem = {
   championshipId: string;
 };
+
+export type LongDistanceFormData = {
+  slug: string;
+  title: string;
+  content: string;
+};
+
+export type LongDistanceListItem = {
+  slug: string;
+};

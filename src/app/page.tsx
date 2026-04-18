@@ -45,42 +45,6 @@ export default function Home() {
           </div>
 
           <div>
-            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Races</h3>
-            <div className="space-y-3">
-              <Link
-                href="/races"
-                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
-              >
-                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-700">
-                  Add new
-                </p>
-                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Create new race
-                </h4>
-                <p className="mt-3 text-base leading-6 text-stone-600">
-                  Start a new race page with metadata, route description, and event details.
-                </p>
-              </Link>
-              <Link
-                href="/races/edit"
-                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
-              >
-                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
-                  Edit existing
-                </p>
-                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Edit race details
-                </h4>
-                <p className="mt-3 text-base leading-6 text-stone-600">
-                  Load an existing race page and update its metadata or route description.
-                </p>
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-5 lg:grid-cols-2">
-          <div>
             <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Results</h3>
             <div className="space-y-3">
               <Link
@@ -113,6 +77,28 @@ export default function Home() {
               </Link>
             </div>
           </div>
+        </section>
+
+        <section className="grid gap-5 lg:grid-cols-2">
+          <div>
+            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Collections</h3>
+            <div className="space-y-3">
+              <Link
+                href="/collections"
+                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
+              >
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
+                  Manage images
+                </p>
+                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
+                  Upload pictures and edit collections
+                </h4>
+                <p className="mt-3 text-base leading-6 text-stone-600">
+                  Upload image assets to Pictures/ and update collections.yaml in a validated PR.
+                </p>
+              </Link>
+            </div>
+          </div>
 
           <div>
             <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Calendar</h3>
@@ -135,22 +121,42 @@ export default function Home() {
           </div>
 
           <div>
-            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Championships</h3>
+            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Races</h3>
             <div className="space-y-3">
               <Link
-                href="/championships"
+                href="/races"
                 className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
               >
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-700">
                   Add new
                 </p>
                 <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Create new championship
+                  Create new race
                 </h4>
                 <p className="mt-3 text-base leading-6 text-stone-600">
-                  Add a new championship with its title, annual race schedules, and a description.
+                  Start a new race page with metadata, route description, and event details.
                 </p>
               </Link>
+              <Link
+                href="/races/edit"
+                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
+              >
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
+                  Edit existing
+                </p>
+                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
+                  Edit race details
+                </h4>
+                <p className="mt-3 text-base leading-6 text-stone-600">
+                  Load an existing race page and update its metadata or route description.
+                </p>
+              </Link>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Championships</h3>
+            <div className="space-y-3">
               <Link
                 href="/championships/edit"
                 className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
@@ -203,20 +209,20 @@ export default function Home() {
           </div>
 
           <div>
-            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Collections</h3>
+            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Long Distance</h3>
             <div className="space-y-3">
               <Link
-                href="/collections"
+                href="/long-distance/edit"
                 className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
               >
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
-                  Manage images
+                  Edit existing
                 </p>
                 <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Upload pictures and edit collections
+                  Edit long-distance report
                 </h4>
                 <p className="mt-3 text-base leading-6 text-stone-600">
-                  Upload image assets to Pictures/ and update collections.yaml in a validated PR.
+                  Load an existing long-distance report and update its content.
                 </p>
               </Link>
             </div>

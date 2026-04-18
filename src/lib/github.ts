@@ -14,6 +14,8 @@ import type {
   ChampionshipYearEntry,
   ClubInfoFormData,
   ClubListItem,
+  LongDistanceFormData,
+  LongDistanceListItem,
   NewsFrontmatter,
   NewsListItem,
   RaceInfoFormData,
@@ -1079,6 +1081,38 @@ export async function getChampionshipDraft(
       championshipId: safeId,
       title: String(parsed.data.title ?? ""),
       yearEntries,
+      content: parsed.content.trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function listLongDistanceDrafts(): Promise<LongDistanceListItem[]> {
+  try {
+    const entries = await getRepositoryDirectory("long-distance");
+    return entries
+      .filter((entry) => entry.type === "file" && entry.name.endsWith(".md"))
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map((entry) => ({ slug: entry.name.replace(/\.md$/, "") }) satisfies LongDistanceListItem);
+  } catch {
+    return [];
+  }
+}
+
+export async function getLongDistanceDraft(slug: string): Promise<LongDistanceFormData | null> {
+  try {
+    const safeSlug = toSafeRepoPathSegment(slug);
+    if (!safeSlug) {
+      return null;
+    }
+
+    const file = await getRepositoryFile(`long-distance/${safeSlug}.md`);
+    const parsed = matter(file);
+
+    return {
+      slug: safeSlug,
+      title: String(parsed.data.title ?? ""),
       content: parsed.content.trim(),
     };
   } catch {
