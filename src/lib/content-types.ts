@@ -60,3 +60,19 @@ export type ClubInfoFormData = {
 export type ClubListItem = {
   clubId: string;
 };
+
+export type ChampionshipYearEntry = {
+  year: string;
+  races: string;
+};
+
+export type ChampionshipInfoFormData = {
+  championshipId: string;
+  title: string;
+  yearEntries: ChampionshipYearEntry[];
+  content: string;
+};
+
+export type ChampionshipListItem = {
+  championshipId: string;
+};

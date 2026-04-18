@@ -9,6 +9,9 @@ import {
   suggestNextNewsSlugSuffix,
 } from "@/lib/news-slug";
 import type {
+  ChampionshipInfoFormData,
+  ChampionshipListItem,
+  ChampionshipYearEntry,
   ClubInfoFormData,
   ClubListItem,
   NewsFrontmatter,
@@ -1033,6 +1036,49 @@ export async function getClubDraft(clubId: string): Promise<ClubInfoFormData | n
       name: String(parsed.data.name ?? ""),
       aka,
       web: String(parsed.data.web ?? ""),
+      content: parsed.content.trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function listChampionshipDrafts(): Promise<ChampionshipListItem[]> {
+  try {
+    const entries = await getRepositoryDirectory("championships");
+    return entries
+      .filter((entry) => entry.type === "file" && entry.name.endsWith(".md"))
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map(
+        (entry) =>
+          ({ championshipId: entry.name.replace(/\.md$/, "") }) satisfies ChampionshipListItem
+      );
+  } catch {
+    return [];
+  }
+}
+
+export async function getChampionshipDraft(
+  championshipId: string
+): Promise<ChampionshipInfoFormData | null> {
+  try {
+    const safeId = toSafeRepoPathSegment(championshipId);
+    if (!safeId) {
+      return null;
+    }
+
+    const file = await getRepositoryFile(`championships/${safeId}.md`);
+    const parsed = matter(file);
+
+    const yearEntries: ChampionshipYearEntry[] = Object.entries(parsed.data)
+      .filter(([key]) => /^\d{4}$/.test(key))
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([year, races]) => ({ year, races: String(races ?? "") }));
+
+    return {
+      championshipId: safeId,
+      title: String(parsed.data.title ?? ""),
+      yearEntries,
       content: parsed.content.trim(),
     };
   } catch {

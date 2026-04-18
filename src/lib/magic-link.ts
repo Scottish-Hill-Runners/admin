@@ -74,7 +74,7 @@ export async function verifyMagicToken(token: string): Promise<VerifyResult> {
 
   let sigValid = false;
   try {
-    sigValid = await subtle.verify("HMAC", key, fromHex(sig), encoder.encode(payload));
+    sigValid = await subtle.verify("HMAC", key, fromHex(sig) as Uint8Array<ArrayBuffer>, encoder.encode(payload));
   } catch {
     return { valid: false, reason: "invalid" };
   }

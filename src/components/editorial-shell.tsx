@@ -79,6 +79,12 @@ export async function EditorialShell({
                 Calendar
               </Link>
               <Link
+                href="/championships"
+                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
+              >
+                Championships
+              </Link>
+              <Link
                 href="/clubs"
                 className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
               >
