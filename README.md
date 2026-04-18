@@ -12,6 +12,7 @@ Scope:
 - Race information editing
 - Race results CSV upload and validation
 - Calendar CSV editing (`calendar.csv`)
+- Club information editing
 
 ## Architecture
 
@@ -24,7 +25,7 @@ Scope:
 
 - Editorial dashboard shell
 - Content repository environment configuration
-- Routes for News, Race, Results, Calendar and Collections (race photos) workflows
+- Routes for News, Race, Results, Calendar, Club and Collections (race photos) workflows
 - Core dependencies installed for Auth.js, GitHub API integration, schema validation, and markdown rendering
 - News editor server action that can open a content pull request when GitHub credentials are configured
 - Middleware and server-side guards that keep editor routes behind sign-in and allowlist checks
