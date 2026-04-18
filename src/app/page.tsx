@@ -135,6 +135,40 @@ export default function Home() {
           </div>
 
           <div>
+            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Clubs</h3>
+            <div className="space-y-3">
+              <Link
+                href="/clubs"
+                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
+              >
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-700">
+                  Add new
+                </p>
+                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
+                  Create new club
+                </h4>
+                <p className="mt-3 text-base leading-6 text-stone-600">
+                  Add a new club entry with its name, aliases, website, and a description.
+                </p>
+              </Link>
+              <Link
+                href="/clubs/edit"
+                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
+              >
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
+                  Edit existing
+                </p>
+                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
+                  Edit club details
+                </h4>
+                <p className="mt-3 text-base leading-6 text-stone-600">
+                  Load an existing club page and update its details or description.
+                </p>
+              </Link>
+            </div>
+          </div>
+
+          <div>
             <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Collections</h3>
             <div className="space-y-3">
               <Link

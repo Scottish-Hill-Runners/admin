@@ -48,3 +48,15 @@ export type CsvUploadStatus = {
   year: string;
   issues: string[];
 };
+
+export type ClubInfoFormData = {
+  clubId: string;
+  name: string;
+  aka: string[];
+  web: string;
+  content: string;
+};
+
+export type ClubListItem = {
+  clubId: string;
+};

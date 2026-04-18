@@ -1,22 +1,22 @@
 # SHR Admin
 
-Separate admin application for Scottish Hill Runners editors.
+Admin application for Scottish Hill Runners community editors.
 
 ## Purpose
 
-This app provides a non-technical editing workflow for content stored in the GitHub-backed content repository. The public `results` site remains a separate static publishing application.
+This app provides a non-technical editing surface for SHR content stored in the GitHub-backed `contents` repository. The `site-builder` repository remains a separate static publishing application.
 
-Initial MVP scope:
+Scope:
 
 - News editing
 - Race information editing
 - Race results CSV upload and validation
-- Calendar CSV editing (`calendar.csv`, row format `yyyy-mm-dd,RaceID`)
+- Calendar CSV editing (`calendar.csv`)
 
-## Planned architecture
+## Architecture
 
 - Next.js App Router application with a server runtime
-- Magic-link authentication for editors
+- GitHub, Google, Microsoft and Magic-link authentication for editors
 - GitHub-backed writes to the content repository via pull requests
 - Shared validation rules derived from the public site build scripts
 
@@ -24,20 +24,16 @@ Initial MVP scope:
 
 - Editorial dashboard shell
 - Content repository environment configuration
-- Starter routes for News and Race workflows
+- Routes for News, Race, Results, Calendar and Collections (race photos) workflows
 - Core dependencies installed for Auth.js, GitHub API integration, schema validation, and markdown rendering
-- Auth route scaffold and editor allowlist helper
 - News editor server action that can open a content pull request when GitHub credentials are configured
 - Middleware and server-side guards that keep editor routes behind sign-in and allowlist checks
-- Interim signed-cookie editor session flow for approved emails while real magic-link infrastructure is still pending
+- GitHub, Google, Microsoft and Magic-link email authentication
 - Race metadata editor flow with validation and PR creation for `races/<raceId>/index.md`
 - Results CSV draft flow with server-side validation and PR creation for `races/<raceId>/<year>.csv`
 - Calendar CSV draft flow with grid editing, validation, and PR creation for `calendar.csv`
 
 ## Development
-
-Use Node 22 LTS for local development. Node 25+ can trigger JavaScript heap OOM failures with Next.js.
-This project now auto-selects Homebrew Node 22 (`/opt/homebrew/opt/node@22/bin/node`) for `npm run dev`, `npm run build`, and `npm run start` when available.
 
 Install dependencies and start the dev server:
 
@@ -56,7 +52,6 @@ For OAuth auth, configure one or more provider settings in `.env.local`:
 - `MICROSOFT_ENTRA_ID_CLIENT_ID`
 - `MICROSOFT_ENTRA_ID_CLIENT_SECRET`
 - `MICROSOFT_ENTRA_ID_TENANT_ID`
-- `EDITOR_GITHUB_ALLOWLIST`
 
 For email magic-link sign-in via [Resend](https://resend.com):
 
@@ -72,10 +67,3 @@ For GitHub-backed writes to the content repository, configure one of these optio
   - `GITHUB_APP_ID`
   - `GITHUB_APP_PRIVATE_KEY`
   - `GITHUB_APP_INSTALLATION_ID`
-
-## Next implementation steps
-
-1. Associate PR creation with the authenticated editor identity.
-2. Associate PR creation with the authenticated editor identity.
-3. Replace the temporary token-based GitHub write path with GitHub App authentication.
-4. Improve the CSV workflow with file upload, header mapping, and richer validation previews.

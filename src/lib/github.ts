@@ -9,6 +9,8 @@ import {
   suggestNextNewsSlugSuffix,
 } from "@/lib/news-slug";
 import type {
+  ClubInfoFormData,
+  ClubListItem,
   NewsFrontmatter,
   NewsListItem,
   RaceInfoFormData,
@@ -1035,5 +1037,49 @@ export async function createContentPullRequestWithFiles({
     prNumber: pullRequest.data.number,
     prUrl: pullRequest.data.html_url,
   };
+}
+
+export async function listClubDrafts(): Promise<ClubListItem[]> {
+  try {
+    const entries = await getRepositoryDirectory("clubs");
+    return entries
+      .filter((entry) => entry.type === "file" && entry.name.endsWith(".md"))
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map((entry) => ({ clubId: entry.name.replace(/\.md$/, "") }) satisfies ClubListItem);
+  } catch {
+    return [];
+  }
+}
+
+export async function getClubDraft(clubId: string): Promise<ClubInfoFormData | null> {
+  try {
+    const safeClubId = toSafeRepoPathSegment(clubId);
+    if (!safeClubId) {
+      return null;
+    }
+
+    const file = await getRepositoryFile(`clubs/${safeClubId}.md`);
+    const parsed = matter(file);
+
+    const rawAka = parsed.data.aka;
+    const aka: string[] = Array.isArray(rawAka)
+      ? rawAka.map(String).filter(Boolean)
+      : rawAka
+        ? String(rawAka)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [];
+
+    return {
+      clubId: safeClubId,
+      name: String(parsed.data.name ?? ""),
+      aka,
+      web: String(parsed.data.web ?? ""),
+      content: parsed.content.trim(),
+    };
+  } catch {
+    return null;
+  }
 }
 
