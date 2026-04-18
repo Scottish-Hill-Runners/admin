@@ -63,7 +63,6 @@ type RepositoryFileEntry = {
 };
 
 type CachedGetEntry = {
-  etag: string;
   data: unknown;
   cachedAt: number;
   lastAccessedAt: number;
@@ -332,81 +331,39 @@ async function requestGitHubGet<T>(
 
   if (cached) {
     cached.lastAccessedAt = requestStartedAt;
+    logGitHubPerf("request", {
+      route,
+      durationMs: 0,
+      cacheStatus: "hit",
+      approxResponseBytes: estimateApproxBytes(cached.data),
+    });
+    logGitHubCacheSnapshotIfNeeded();
+    return cached.data as T;
   }
-
-  const headers = cached?.etag ? { "if-none-match": cached.etag } : undefined;
 
   try {
     const response = await client.request(route, {
       ...params,
-      headers,
     });
 
-    const etagHeader = response.headers.etag;
-    const etag = Array.isArray(etagHeader) ? etagHeader[0] : etagHeader;
-
-    if (typeof etag === "string" && etag.length > 0) {
-      const now = Date.now();
-      githubGetCache.set(cacheKey, {
-        etag,
-        data: response.data,
-        cachedAt: now,
-        lastAccessedAt: now,
-      });
-      pruneGitHubGetCache(now);
-    }
+    const now = Date.now();
+    githubGetCache.set(cacheKey, {
+      data: response.data,
+      cachedAt: now,
+      lastAccessedAt: now,
+    });
+    pruneGitHubGetCache(now);
 
     logGitHubPerf("request", {
       route,
       durationMs: Math.round((isGitHubPerfDebugEnabled() ? performance.now() : 0) - requestStartedPerf),
-      cacheStatus: cached ? "etag-refresh" : "miss",
+      cacheStatus: "miss",
       approxResponseBytes: estimateApproxBytes(response.data),
     });
     logGitHubCacheSnapshotIfNeeded();
 
     return response.data as T;
   } catch (error) {
-    if (getErrorStatus(error) === 304) {
-      if (cached) {
-        logGitHubPerf("request", {
-          route,
-          durationMs: Math.round((isGitHubPerfDebugEnabled() ? performance.now() : 0) - requestStartedPerf),
-          cacheStatus: "revalidated-hit",
-          approxResponseBytes: estimateApproxBytes(cached.data),
-        });
-        logGitHubCacheSnapshotIfNeeded();
-        return cached.data as T;
-      }
-
-      // Defensive fallback: retry once without conditional headers if a 304 arrives without cache.
-      const retryResponse = await client.request(route, params);
-      const retryEtagHeader = retryResponse.headers.etag;
-      const retryEtag = Array.isArray(retryEtagHeader)
-        ? retryEtagHeader[0]
-        : retryEtagHeader;
-
-      if (typeof retryEtag === "string" && retryEtag.length > 0) {
-        const now = Date.now();
-        githubGetCache.set(cacheKey, {
-          etag: retryEtag,
-          data: retryResponse.data,
-          cachedAt: now,
-          lastAccessedAt: now,
-        });
-        pruneGitHubGetCache(now);
-      }
-
-      logGitHubPerf("request", {
-        route,
-        durationMs: Date.now() - requestStartedAt,
-        cacheStatus: "revalidate-no-cache-retry",
-        approxResponseBytes: estimateApproxBytes(retryResponse.data),
-      });
-      logGitHubCacheSnapshotIfNeeded();
-
-      return retryResponse.data as T;
-    }
-
     logGitHubPerf("request-error", {
       route,
       durationMs: Date.now() - requestStartedAt,

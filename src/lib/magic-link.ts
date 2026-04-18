@@ -1,12 +1,45 @@
-import { createHmac, timingSafeEqual } from "crypto";
 import { env } from "@/lib/env";
 
 const TOKEN_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
 
-/** HMAC-SHA256 of `payload` using AUTH_SECRET. Returns hex string. */
-function hmacPayload(payload: string): string {
-  const secret = env.AUTH_SECRET ?? "dev-secret-not-for-production";
-  return createHmac("sha256", secret).update(payload).digest("hex");
+const subtle = globalThis.crypto.subtle;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+function toBase64Url(bytes: Uint8Array): string {
+  const base64 = btoa(String.fromCharCode(...bytes));
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function fromBase64Url(input: string): Uint8Array {
+  const base64 = input.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(base64.length + (4 - (base64.length % 4)) % 4, "=");
+  const binary = atob(padded);
+  return Uint8Array.from(binary, (c) => c.charCodeAt(0));
+}
+
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function fromHex(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+async function importHmacKey(secret: string): Promise<CryptoKey> {
+  return subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
 }
 
 /**
@@ -14,11 +47,13 @@ function hmacPayload(payload: string): string {
  * Format: `<base64url(email)>.<expiresAtMs>.<hmac-hex>`
  * None of these segments contain dots, so splitting on `.` is safe.
  */
-export function generateMagicToken(email: string): string {
+export async function generateMagicToken(email: string): Promise<string> {
+  const secret = env.AUTH_SECRET ?? "dev-secret-not-for-production";
+  const key = await importHmacKey(secret);
   const expiresAt = Date.now() + TOKEN_EXPIRY_MS;
-  const emailB64 = Buffer.from(email, "utf8").toString("base64url");
+  const emailB64 = toBase64Url(encoder.encode(email));
   const payload = `${emailB64}.${expiresAt}`;
-  const sig = hmacPayload(payload);
+  const sig = toHex(new Uint8Array(await subtle.sign("HMAC", key, encoder.encode(payload))));
   return `${payload}.${sig}`;
 }
 
@@ -27,25 +62,24 @@ export type VerifyResult =
   | { valid: false; reason: "expired" | "invalid" };
 
 /** Verify a magic token and return the decoded email on success. */
-export function verifyMagicToken(token: string): VerifyResult {
+export async function verifyMagicToken(token: string): Promise<VerifyResult> {
   const parts = token.split(".");
   if (parts.length !== 3) return { valid: false, reason: "invalid" };
 
   const [emailB64, expiresAtStr, sig] = parts;
   const payload = `${emailB64}.${expiresAtStr}`;
-  const expectedSig = hmacPayload(payload);
 
-  let sigMatch = false;
+  const secret = env.AUTH_SECRET ?? "dev-secret-not-for-production";
+  const key = await importHmacKey(secret);
+
+  let sigValid = false;
   try {
-    const sigBuf = Buffer.from(sig, "hex");
-    const expectedBuf = Buffer.from(expectedSig, "hex");
-    if (sigBuf.length !== expectedBuf.length) return { valid: false, reason: "invalid" };
-    sigMatch = timingSafeEqual(sigBuf, expectedBuf);
+    sigValid = await subtle.verify("HMAC", key, fromHex(sig), encoder.encode(payload));
   } catch {
     return { valid: false, reason: "invalid" };
   }
 
-  if (!sigMatch) return { valid: false, reason: "invalid" };
+  if (!sigValid) return { valid: false, reason: "invalid" };
 
   const expiresAt = parseInt(expiresAtStr, 10);
   if (isNaN(expiresAt) || Date.now() > expiresAt) {
@@ -54,7 +88,7 @@ export function verifyMagicToken(token: string): VerifyResult {
 
   let email: string;
   try {
-    email = Buffer.from(emailB64, "base64url").toString("utf8");
+    email = decoder.decode(fromBase64Url(emailB64));
     if (!email.includes("@")) return { valid: false, reason: "invalid" };
   } catch {
     return { valid: false, reason: "invalid" };

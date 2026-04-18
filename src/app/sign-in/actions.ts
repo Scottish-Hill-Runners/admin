@@ -27,7 +27,7 @@ export async function requestMagicLink(
   }
 
   try {
-    const token = generateMagicToken(parsed.data);
+    const token = await generateMagicToken(parsed.data);
     const headersList = await headers();
     const host = headersList.get("host") ?? "localhost:3000";
     const proto =

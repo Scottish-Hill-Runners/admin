@@ -59,7 +59,7 @@ if (enabledAuthProviders.emailMagicLink) {
       async authorize(credentials) {
         const token = credentials?.token;
         if (typeof token !== "string" || !token) return null;
-        const result = verifyMagicToken(token);
+        const result = await verifyMagicToken(token);
         if (!result.valid) return null;
         return {
           id: result.email,

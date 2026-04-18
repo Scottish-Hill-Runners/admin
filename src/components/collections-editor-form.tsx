@@ -46,7 +46,7 @@ export function CollectionsEditorForm({
   const [selectedFileNames, setSelectedFileNames] = useState<string[]>([]);
   const [selectedImagePreviews, setSelectedImagePreviews] = useState<SelectedImagePreview[]>([]);
   const [targetSection, setTargetSection] = useState<string>(
-    collectionOptions[0]?.value ?? "race"
+    "race"
   );
   const [raceSlug, setRaceSlug] = useState<string>(raceOptions[0]?.value ?? "");
 
@@ -206,12 +206,12 @@ export function CollectionsEditorForm({
               onChange={(event) => setTargetSection(event.target.value)}
               className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
             >
+              <option value="race">Race image mapping</option>
               {collectionOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
-              <option value="race">Race image mapping</option>
             </select>
           </label>
 
