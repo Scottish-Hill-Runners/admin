@@ -86,3 +86,12 @@ export type LongDistanceFormData = {
 export type LongDistanceListItem = {
   slug: string;
 };
+
+export type InfoFormData = {
+  filePath: string;
+  content: string;
+};
+
+export type InfoListItem = {
+  filePath: string;
+};

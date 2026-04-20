@@ -6,7 +6,7 @@ export default function Home() {
     <EditorialShell
       eyebrow="Scottish Hill Runners"
       title="Editorial control for race results, descriptions, and news"
-      description="This admin app is the safe editing surface for non-technical editors. It will validate content, prepare clean pull requests, and keep GitHub out of the day-to-day workflow."
+      description="This admin app is the safe editing surface for non-technical community editors. It will validate content, prepare clean pull requests, and keep GitHub out of the day-to-day workflow."
     >
       <div className="grid gap-8">
         <section className="grid gap-5 lg:grid-cols-2">
@@ -223,6 +223,26 @@ export default function Home() {
                 </h4>
                 <p className="mt-3 text-base leading-6 text-stone-600">
                   Load an existing long-distance report and update its content.
+                </p>
+              </Link>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Info</h3>
+            <div className="space-y-3">
+              <Link
+                href="/info/edit"
+                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
+              >
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
+                  Edit existing
+                </p>
+                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
+                  Edit info markdown files
+                </h4>
+                <p className="mt-3 text-base leading-6 text-stone-600">
+                  Open any markdown file under info/ and edit its content.
                 </p>
               </Link>
             </div>

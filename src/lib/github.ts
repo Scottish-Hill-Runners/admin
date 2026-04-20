@@ -14,6 +14,8 @@ import type {
   ChampionshipYearEntry,
   ClubInfoFormData,
   ClubListItem,
+  InfoFormData,
+  InfoListItem,
   LongDistanceFormData,
   LongDistanceListItem,
   NewsFrontmatter,
@@ -154,6 +156,37 @@ function toSafeRepoPathSegment(value: string): string | null {
   }
 
   return decoded;
+}
+
+function toSafeRepoRelativeFilePath(value: string): string | null {
+  const decoded = decodeURIComponent(String(value ?? "").trim())
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "");
+
+  if (!decoded) {
+    return null;
+  }
+
+  if (decoded.includes("\\")) {
+    return null;
+  }
+
+  const segments = decoded.split("/");
+  if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
+    return null;
+  }
+
+  const directorySegments = segments.slice(0, -1);
+  if (directorySegments.some((segment) => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(segment))) {
+    return null;
+  }
+
+  const fileName = segments[segments.length - 1];
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*\.md$/.test(fileName)) {
+    return null;
+  }
+
+  return segments.join("/");
 }
 
 function buildGitHubGetCacheKey(route: string, params: Record<string, unknown>): string {
@@ -1114,6 +1147,41 @@ export async function getLongDistanceDraft(slug: string): Promise<LongDistanceFo
       slug: safeSlug,
       title: String(parsed.data.title ?? ""),
       content: parsed.content.trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function listInfoDrafts(): Promise<InfoListItem[]> {
+  try {
+    const files = await getRepositoryFiles("info", ".md");
+
+    return files
+      .map((file) => {
+        const filePath = file.path.replace(/^info\//, "");
+
+        return { filePath } satisfies InfoListItem;
+      })
+      .sort((left, right) => left.filePath.localeCompare(right.filePath));
+  } catch {
+    return [];
+  }
+}
+
+export async function getInfoDraft(filePath: string): Promise<InfoFormData | null> {
+  try {
+    const safeFilePath = toSafeRepoRelativeFilePath(filePath);
+    if (!safeFilePath) {
+      return null;
+    }
+
+    const targetPath = `info/${safeFilePath}`;
+    const file = await getRepositoryFile(targetPath);
+
+    return {
+      filePath: safeFilePath,
+      content: file.trim(),
     };
   } catch {
     return null;
