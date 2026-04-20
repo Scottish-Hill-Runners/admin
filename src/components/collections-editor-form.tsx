@@ -30,6 +30,57 @@ type SelectedImagePreview = {
   url: string;
 };
 
+function toSafePictureFilename(originalName: string): string | null {
+  const trimmed = String(originalName).trim();
+  const extensionSeparator = trimmed.lastIndexOf(".");
+  if (extensionSeparator <= 0 || extensionSeparator === trimmed.length - 1) {
+    return null;
+  }
+
+  const rawBase = trimmed.slice(0, extensionSeparator);
+  const rawExtension = trimmed.slice(extensionSeparator + 1).toLowerCase();
+  const allowedImageExtensions = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
+  if (!allowedImageExtensions.has(rawExtension)) {
+    return null;
+  }
+
+  const safeBase = rawBase
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-.]+/, "")
+    .replace(/[-.]+$/, "");
+
+  if (!safeBase || safeBase === "." || safeBase === "..") {
+    return null;
+  }
+
+  return `${safeBase}.${rawExtension}`;
+}
+
+function splitImagePaths(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((path) => path.trim())
+    .filter((path) => path.length > 0);
+}
+
+function toUniquePaths(paths: string[]): string[] {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+
+  for (const path of paths) {
+    if (seen.has(path)) {
+      continue;
+    }
+
+    seen.add(path);
+    unique.push(path);
+  }
+
+  return unique;
+}
+
 export function CollectionsEditorForm({
   collectionOptions,
   raceOptions,
@@ -45,6 +96,8 @@ export function CollectionsEditorForm({
   );
   const [selectedFileNames, setSelectedFileNames] = useState<string[]>([]);
   const [selectedImagePreviews, setSelectedImagePreviews] = useState<SelectedImagePreview[]>([]);
+  const [manualRaceImagePaths, setManualRaceImagePaths] = useState<string>("");
+  const [heroImagePath, setHeroImagePath] = useState<string>("");
   const [targetSection, setTargetSection] = useState<string>(
     "race"
   );
@@ -61,6 +114,23 @@ export function CollectionsEditorForm({
     () => collectionOptions.find((option) => option.value === targetSection),
     [collectionOptions, targetSection]
   );
+  const uploadedImagePaths = useMemo(
+    () =>
+      selectedFileNames
+        .map((name) => toSafePictureFilename(name))
+        .filter((value): value is string => !!value)
+        .map((safeName) => `Pictures/${safeName}`),
+    [selectedFileNames]
+  );
+  const raceImagePaths = useMemo(
+    () => toUniquePaths(uploadedImagePaths.concat(splitImagePaths(manualRaceImagePaths))),
+    [manualRaceImagePaths, uploadedImagePaths]
+  );
+  const raceImagePathsPayload = useMemo(
+    () => raceImagePaths.join("\n"),
+    [raceImagePaths]
+  );
+  const selectedHeroImagePath = raceImagePaths.includes(heroImagePath) ? heroImagePath : "";
 
   useEffect(() => {
     return () => {
@@ -206,7 +276,7 @@ export function CollectionsEditorForm({
               onChange={(event) => setTargetSection(event.target.value)}
               className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
             >
-              <option value="race">Race image mapping</option>
+              <option value="race">Race image</option>
               {collectionOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -247,62 +317,107 @@ export function CollectionsEditorForm({
             </p>
           ))}
 
-          <label className="block space-y-2">
-            <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-              Image path
-            </span>
-            <input
-              name="imagePath"
-              placeholder="Pictures/example.jpg"
-              className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
-            />
-          </label>
-
-          {yamlState.fieldErrors?.imagePath?.map((error) => (
-            <p key={error} className="text-sm text-red-200">
-              {error}
-            </p>
-          ))}
-
           {isRaceTarget ? (
             <>
               <label className="block space-y-2">
                 <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-                  Race slot
+                  Image paths
+                </span>
+                <textarea
+                  value={manualRaceImagePaths}
+                  onChange={(event) => setManualRaceImagePaths(event.target.value)}
+                  rows={5}
+                  placeholder="Add manual paths, one per line, e.g. Pictures/race-day-1.jpg"
+                  className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
+                />
+              </label>
+
+              {uploadedImagePaths.length > 0 ? (
+                <div className="rounded-2xl border border-lime-200/20 bg-black/25 p-3 text-sm text-stone-200">
+                  <p className="font-semibold text-lime-100">From selected uploads</p>
+                  <ul className="mt-2 space-y-1">
+                    {uploadedImagePaths.map((path) => (
+                      <li key={path}>{path}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {raceImagePaths.length > 0 ? (
+                <div className="rounded-2xl border border-lime-200/20 bg-black/25 p-3 text-sm text-stone-200">
+                  <p className="font-semibold text-lime-100">
+                    This submission will create one race entry per image
+                  </p>
+                  <ul className="mt-2 space-y-1">
+                    {raceImagePaths.map((path) => (
+                      <li key={path}>{path}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              <input type="hidden" name="imagePaths" value={raceImagePathsPayload} readOnly />
+              <input type="hidden" name="imagePath" value="" readOnly />
+
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
+                  Hero image (optional)
                 </span>
                 <select
-                  name="raceSlot"
+                  name="heroImagePath"
+                  value={selectedHeroImagePath}
+                  onChange={(event) => setHeroImagePath(event.target.value)}
                   className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
                 >
-                  <option value="hero">Hero</option>
-                  <option value="gallery">Gallery</option>
+                  <option value="">No hero in this submission (all gallery)</option>
+                  {raceImagePaths.map((path) => (
+                    <option key={path} value={path}>
+                      {path}
+                    </option>
+                  ))}
                 </select>
               </label>
 
               <label className="block space-y-2">
                 <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-                  Confidence
+                  Confidence (optional)
                 </span>
                 <input
                   name="confidence"
-                  defaultValue="high"
+                  placeholder="high (default)"
                   className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
                 />
               </label>
 
               <label className="block space-y-2">
                 <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-                  Source
+                  Source (optional)
                 </span>
                 <input
                   name="source"
-                  defaultValue="filename-match"
+                  placeholder="Defaults to your name/email"
                   className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
                 />
               </label>
+
+              <p className="text-sm leading-6 text-stone-300">
+                Select one race once, then submit all image paths together. A race can have one
+                hero image total, and any number of gallery images.
+              </p>
             </>
           ) : (
             <>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
+                  Image path
+                </span>
+                <input
+                  name="imagePath"
+                  placeholder="Pictures/example.jpg"
+                  className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
+                />
+              </label>
+
               <label className="block space-y-2">
                 <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
                   Tier
@@ -319,11 +434,12 @@ export function CollectionsEditorForm({
 
               <label className="block space-y-2">
                 <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-                  Tags
+                  Tags <span className="text-red-400">*</span>
                 </span>
                 <input
                   name="tags"
-                  placeholder="comma,separated,tags"
+                  placeholder="comma,separated,tags (required)"
+                  required
                   className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
                 />
               </label>
@@ -332,7 +448,19 @@ export function CollectionsEditorForm({
 
           <input type="hidden" name="raceSlug" value={isRaceTarget ? raceSlug : ""} readOnly />
 
-          {yamlState.fieldErrors?.raceSlot?.map((error) => (
+          {yamlState.fieldErrors?.imagePath?.map((error) => (
+            <p key={error} className="text-sm text-red-200">
+              {error}
+            </p>
+          ))}
+
+          {yamlState.fieldErrors?.imagePaths?.map((error) => (
+            <p key={error} className="text-sm text-red-200">
+              {error}
+            </p>
+          ))}
+
+          {yamlState.fieldErrors?.heroImagePath?.map((error) => (
             <p key={error} className="text-sm text-red-200">
               {error}
             </p>
@@ -354,7 +482,11 @@ export function CollectionsEditorForm({
             <p className="text-sm leading-6 text-stone-300">
               Adding an image item to {selectedCollection.label}.
             </p>
-          ) : null}
+          ) : (
+            <p className="text-sm leading-6 text-stone-300">
+              One collections.yaml entry is created for each submitted race image path.
+            </p>
+          )}
 
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm leading-6 text-stone-200">

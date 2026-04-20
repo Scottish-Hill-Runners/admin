@@ -46,9 +46,7 @@ export function getCollectionsEditorOptions(data: CollectionsYamlValues): {
   raceOptions: CollectionsEditorOption[];
 } {
   const preferredCollectionIds = [
-    "homepage-decorative-draft",
     "homepage-decorative",
-    "committee-portraits-draft",
     "committee-portraits",
   ];
 

@@ -11,6 +11,7 @@ import {
   parseAndValidateCollectionsYaml,
   stringifyCollectionsYaml,
 } from "@/lib/collections-yaml";
+import { getEditorSession } from "@/lib/auth-session";
 import { requireEditorAccess } from "@/lib/route-protection";
 
 const MAX_IMAGE_FILES = 20;
@@ -33,15 +34,12 @@ const targetSectionSchema = z.enum([
 
 const collectionsSectionUpdateSchema = z.object({
   targetSection: targetSectionSchema,
-  imagePath: z
-    .string()
-    .trim()
-    .min(1, "Image path is required.")
-    .startsWith("Pictures/", "Image path must start with Pictures/."),
+  imagePath: z.string().trim().optional(),
+  imagePaths: z.string().trim().optional(),
+  heroImagePath: z.string().trim().optional(),
   tier: z.string().trim().optional(),
   tags: z.string().trim().optional(),
   raceSlug: z.string().trim().optional(),
-  raceSlot: z.enum(["hero", "gallery"]).optional(),
   confidence: z.string().trim().optional(),
   source: z.string().trim().optional(),
 });
@@ -60,14 +58,62 @@ export type CollectionsYamlState = {
   fieldErrors?: {
     targetSection?: string[];
     imagePath?: string[];
+    imagePaths?: string[];
+    heroImagePath?: string[];
     tier?: string[];
     tags?: string[];
     raceSlug?: string[];
-    raceSlot?: string[];
     confidence?: string[];
     source?: string[];
   };
 };
+
+function splitImagePaths(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((path) => path.trim())
+    .filter((path) => path.length > 0);
+}
+
+function toUniqueImagePaths(paths: string[]): string[] {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+
+  for (const path of paths) {
+    if (seen.has(path)) {
+      continue;
+    }
+
+    seen.add(path);
+    unique.push(path);
+  }
+
+  return unique;
+}
+
+function toDefaultSource(args: {
+  name: string | null;
+  email: string | null;
+  login: string | null;
+}): string {
+  if (args.name && args.email) {
+    return `${args.name} <${args.email}>`;
+  }
+
+  if (args.email) {
+    return args.email;
+  }
+
+  if (args.name) {
+    return args.name;
+  }
+
+  if (args.login) {
+    return args.login;
+  }
+
+  return "shr-admin";
+}
 
 function toSafePictureFilename(originalName: string): string | null {
   const trimmed = String(originalName).trim();
@@ -212,14 +258,17 @@ export async function saveCollectionsYamlDraft(
   formData: FormData
 ): Promise<CollectionsYamlState> {
   await requireEditorAccess();
+  const editorSession = await getEditorSession();
+  const editorName = editorSession.session?.user?.name ?? null;
 
   const parsed = collectionsSectionUpdateSchema.safeParse({
     targetSection: formData.get("targetSection"),
     imagePath: formData.get("imagePath"),
+    imagePaths: formData.get("imagePaths"),
+    heroImagePath: formData.get("heroImagePath"),
     tier: formData.get("tier"),
     tags: formData.get("tags"),
     raceSlug: formData.get("raceSlug"),
-    raceSlot: formData.get("raceSlot"),
     confidence: formData.get("confidence"),
     source: formData.get("source"),
   });
@@ -252,10 +301,15 @@ export async function saveCollectionsYamlDraft(
 
   const values = parsed.data;
   const nextData = structuredClone(validated.data);
-
-  const imagePath = values.imagePath;
   const confidence = values.confidence && values.confidence.length > 0 ? values.confidence : "high";
-  const source = values.source && values.source.length > 0 ? values.source : "filename-match";
+  const source =
+    values.source && values.source.length > 0
+      ? values.source
+      : toDefaultSource({
+          name: editorName,
+          email: editorSession.email,
+          login: editorSession.login,
+        });
 
   if (values.targetSection === "race") {
     if (!values.raceSlug) {
@@ -268,12 +322,45 @@ export async function saveCollectionsYamlDraft(
       };
     }
 
-    if (!values.raceSlot) {
+    const raceImagePaths = toUniqueImagePaths(
+      splitImagePaths(values.imagePaths ?? "").concat(
+        values.imagePath && values.imagePath.length > 0 ? [values.imagePath] : []
+      )
+    );
+
+    if (raceImagePaths.length === 0) {
       return {
         status: "error",
-        message: "Please choose hero or gallery for race images.",
+        message: "Add one or more race image paths before submitting.",
         fieldErrors: {
-          raceSlot: ["Race slot is required when target section is race."],
+          imagePaths: ["Add at least one image path for race updates."],
+        },
+      };
+    }
+
+    const invalidRacePaths = raceImagePaths.filter((path) => !path.startsWith("Pictures/"));
+    if (invalidRacePaths.length > 0) {
+      return {
+        status: "error",
+        message: "Race image paths must start with Pictures/.",
+        fieldErrors: {
+          imagePaths: invalidRacePaths.map(
+            (path) => `${path}: image paths must start with Pictures/.`
+          ),
+        },
+      };
+    }
+
+    const heroImagePath = values.heroImagePath && values.heroImagePath.length > 0
+      ? values.heroImagePath
+      : null;
+
+    if (heroImagePath && !raceImagePaths.includes(heroImagePath)) {
+      return {
+        status: "error",
+        message: "Hero image must be one of the submitted race image paths.",
+        fieldErrors: {
+          heroImagePath: ["Choose a hero image from the submitted race image paths."],
         },
       };
     }
@@ -289,23 +376,120 @@ export async function saveCollectionsYamlDraft(
       };
     }
 
-    const targetList = values.raceSlot === "hero" ? raceEntry.hero : raceEntry.gallery;
-    if (targetList.some((item) => item.path === imagePath)) {
+    if (heroImagePath && raceEntry.hero.length > 0) {
       return {
         status: "error",
-        message: "This image already exists for the selected race slot.",
+        message: "This race already has a hero image.",
         fieldErrors: {
-          imagePath: ["Duplicate image path for selected race slot."],
+          heroImagePath: ["A race can only have one hero image."],
         },
       };
     }
 
-    targetList.push({
-      path: imagePath,
-      confidence,
-      source,
-    });
+    const duplicateRacePaths = raceImagePaths.filter(
+      (path) =>
+        raceEntry.hero.some((item) => item.path === path) ||
+        raceEntry.gallery.some((item) => item.path === path)
+    );
+
+    if (duplicateRacePaths.length > 0) {
+      return {
+        status: "error",
+        message: "Some submitted race images already exist for this race.",
+        fieldErrors: {
+          imagePaths: duplicateRacePaths.map(
+            (path) => `${path}: duplicate image path for selected race.`
+          ),
+        },
+      };
+    }
+
+    let heroCount = 0;
+    let galleryCount = 0;
+
+    for (const path of raceImagePaths) {
+      const entry = {
+        path,
+        confidence,
+        source,
+      };
+
+      if (heroImagePath && path === heroImagePath) {
+        raceEntry.hero.push(entry);
+        heroCount += 1;
+        continue;
+      }
+
+      raceEntry.gallery.push(entry);
+      galleryCount += 1;
+    }
+
+    const finalValidated = parseAndValidateCollectionsYaml(
+      stringifyCollectionsYaml(nextData)
+    );
+
+    if (!finalValidated.data) {
+      return {
+        status: "error",
+        message: "The requested change produced invalid collections.yaml content.",
+      };
+    }
+
+    const nextYamlText = stringifyCollectionsYaml(finalValidated.data);
+
+    const targetSummary = `race ${values.raceSlug} (${heroCount} hero, ${galleryCount} gallery)`;
+
+    try {
+      const result = await createContentPullRequest({
+        title: "Update collections.yaml",
+        path: "collections.yaml",
+        content: nextYamlText,
+        commitMessage: `Update collections.yaml (${targetSummary})`,
+        prTitle: "Collections: update collections.yaml",
+        prBody:
+          "Automated collections.yaml update created by SHR Admin.\n\n" +
+          `- Content repo: ${contentConfig.repo}\n` +
+          "- Path: collections.yaml\n" +
+          `- Target section: ${targetSummary}\n` +
+          "- Validated sections: collections, raceImageConfig, raceImagesBySlug",
+        branchName: `shr-admin/collections-yaml-${Date.now()}`,
+      });
+
+      return {
+        status: "success",
+        message: `Opened PR #${result.prNumber}: ${result.prUrl}`,
+      };
+    } catch (error) {
+      return {
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to create the GitHub pull request.",
+      };
+    }
   } else {
+    const imagePath = (values.imagePath ?? "").trim();
+    if (!imagePath) {
+      return {
+        status: "error",
+        message: "Image path is required for collection entries.",
+        fieldErrors: {
+          imagePath: ["Image path is required for collection entries."],
+        },
+      };
+    }
+
+    if (!imagePath.startsWith("Pictures/")) {
+      return {
+        status: "error",
+        message: "Image path must start with Pictures/.",
+        fieldErrors: {
+          imagePath: ["Image path must start with Pictures/."],
+        },
+      };
+    }
+
     const targetCollection = nextData.collections.find(
       (collection) => collection.id === values.targetSection
     );
@@ -331,6 +515,21 @@ export async function saveCollectionsYamlDraft(
       };
     }
 
+    const tags = (values.tags ?? "")
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+
+    if (tags.length === 0) {
+      return {
+        status: "error",
+        message: "Each image must have at least one tag.",
+        fieldErrors: {
+          tags: ["Each image must have at least one tag."],
+        },
+      };
+    }
+
     if (targetCollection.items.some((item) => item.path === imagePath)) {
       return {
         status: "error",
@@ -340,11 +539,6 @@ export async function saveCollectionsYamlDraft(
         },
       };
     }
-
-    const tags = (values.tags ?? "")
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0);
 
     targetCollection.items.push({
       path: imagePath,
@@ -365,11 +559,7 @@ export async function saveCollectionsYamlDraft(
   }
 
   const nextYamlText = stringifyCollectionsYaml(finalValidated.data);
-
-  const targetSummary =
-    values.targetSection === "race"
-      ? `race ${values.raceSlug ?? ""} (${values.raceSlot ?? ""})`
-      : values.targetSection;
+  const targetSummary = values.targetSection;
 
   try {
     const result = await createContentPullRequest({

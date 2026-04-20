@@ -8,13 +8,12 @@ const picturePathSchema = z
 const collectionItemSchema = z.object({
   path: picturePathSchema,
   tier: z.string().min(1, "Tier is required."),
-  tags: z.array(z.string().min(1, "Tags cannot be empty.")).default([]),
+  tags: z.array(z.string().min(1, "Tags cannot be empty.")).min(1, "At least one tag is required."),
 });
 
 const collectionSchema = z.object({
   id: z.string().min(1, "Collection id is required."),
   label: z.string().min(1, "Collection label is required."),
-  status: z.string().min(1, "Collection status is required."),
   usage: z.array(z.string().min(1)).default([]),
   doNotUseFor: z.array(z.string().min(1)).default([]),
   items: z.array(collectionItemSchema),
@@ -27,7 +26,7 @@ const raceImageReferenceSchema = z.object({
 });
 
 const raceImagesBySlugEntrySchema = z.object({
-  hero: z.array(raceImageReferenceSchema),
+  hero: z.array(raceImageReferenceSchema).max(1, "A race can only have one hero image."),
   gallery: z.array(raceImageReferenceSchema),
 });
 
@@ -36,12 +35,11 @@ export const collectionsYamlSchema = z.object({
   collections: z.array(collectionSchema),
   raceImageConfig: z
     .object({
-      status: z.string().min(1),
       defaultCollectionId: z.string().min(1),
       includeSidebarVariants: z.boolean(),
       notes: z.array(z.string().min(1)).default([]),
     })
-    .passthrough(),
+    .catchall(z.any()),
   raceImagesBySlug: z.record(z.string(), raceImagesBySlugEntrySchema),
 });
 
