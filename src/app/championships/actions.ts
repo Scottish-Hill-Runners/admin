@@ -8,6 +8,7 @@ import {
 import { contentConfig } from "@/lib/content-config";
 import { createContentPullRequest } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
+import { buildPrAuthor } from "@/lib/auth-session";
 
 export type ChampionshipActionState = {
   status: "idle" | "success" | "error";
@@ -27,7 +28,8 @@ export async function saveChampionshipDraft(
   _previousState: ChampionshipActionState,
   formData: FormData
 ): Promise<ChampionshipActionState> {
-  await requireEditorAccess();
+  const editorSession = await requireEditorAccess();
+  const author = buildPrAuthor(editorSession);
 
   const parsed = championshipFormSchema.safeParse({
     championshipId: formData.get("championshipId"),
@@ -59,6 +61,7 @@ export async function saveChampionshipDraft(
         `- Path: championships/${values.championshipId}.md\n` +
         `- Title: ${values.title}`,
       branchName: `shr-admin/championship-${values.championshipId.toLowerCase()}`,
+      author,
     });
 
     return {

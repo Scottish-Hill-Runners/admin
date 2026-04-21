@@ -10,6 +10,7 @@ import {
   resultsUploadSchema,
   type ResultsUploadValues,
 } from "@/lib/results-upload-schema";
+import { getEditorSession, buildPrAuthor } from "@/lib/auth-session";
 
 export type ResultsUploadState = {
   status: "idle" | "success" | "error";
@@ -152,6 +153,8 @@ export async function saveResultsDraft(
   }
 
   const values = parsed.data;
+  const editorSession = await getEditorSession();
+  const author = buildPrAuthor(editorSession);
   const issues = validateRaceResultsCsv(values.csvText);
   const blockingIssues = issues.filter((issue) => issue.level === "error");
   const issueMessages = issues.map((issue) =>
@@ -179,6 +182,7 @@ export async function saveResultsDraft(
         `- Path: races/${values.raceId}/${values.year}.csv\n` +
         `- Validation warnings: ${issues.filter((issue) => issue.level === "warning").length}`,
       branchName: `shr-admin/results-${values.raceId.toLowerCase()}-${values.year.toLowerCase()}`,
+      author,
     });
 
     return {

@@ -8,6 +8,7 @@ import {
   listReservedNewsSlugSuffixes,
   suggestNewsSlugSuffixForDate,
 } from "@/lib/github";
+import { getEditorSession, buildPrAuthor } from "@/lib/auth-session";
 import {
   buildNewsSlug,
   isIsoNewsDate,
@@ -73,6 +74,8 @@ export async function saveNewsDraft(
   }
 
   const values = parsed.data;
+  const editorSession = await getEditorSession();
+  const author = buildPrAuthor(editorSession);
   const year = values.date.slice(0, 4);
   const originalSlug = String(formData.get("originalSlug") ?? "").trim();
   const requestedSlug = buildNewsSlug(values.date, values.slugSuffix);
@@ -115,6 +118,7 @@ export async function saveNewsDraft(
         `- Path: ${filePath}\n` +
         `- Date: ${values.date}`,
       branchName: `shr-admin/news-${year}-${slug}`,
+      author,
     });
 
     return {

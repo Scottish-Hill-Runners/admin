@@ -30,6 +30,11 @@ type RepoRef = {
   repo: string;
 };
 
+type ContentPrAuthor = {
+  name: string;
+  email: string;
+};
+
 type CreateContentPrInput = {
   title: string;
   path: string;
@@ -38,6 +43,7 @@ type CreateContentPrInput = {
   prTitle: string;
   prBody: string;
   branchName: string;
+  author?: ContentPrAuthor;
 };
 
 type CreateContentPrFileInput = {
@@ -54,6 +60,7 @@ type CreateContentPrWithFilesInput = {
   prTitle: string;
   prBody: string;
   branchName: string;
+  author?: ContentPrAuthor;
 };
 
 type RepositoryDirectoryEntry = {
@@ -923,6 +930,7 @@ export async function createContentPullRequest({
   prTitle,
   prBody,
   branchName,
+  author,
 }: CreateContentPrInput) {
   const client = getGitHubClient();
   if (!client) {
@@ -951,13 +959,18 @@ export async function createContentPullRequest({
     message: commitMessage,
     content: toBase64(content),
     sha: existingSha,
+    ...(author ? { author, committer: author } : {}),
   });
+
+  const fullPrBody = author
+    ? `${prBody}\n- Editor: ${author.name} <${author.email}>`
+    : prBody;
 
   const pullRequest = await client.pulls.create({
     owner: repo.owner,
     repo: repo.repo,
     title: prTitle,
-    body: prBody,
+    body: fullPrBody,
     head: branchName,
     base: baseBranch,
   });
@@ -978,6 +991,7 @@ export async function createContentPullRequestWithFiles({
   prTitle,
   prBody,
   branchName,
+  author,
 }: CreateContentPrWithFilesInput) {
   if (files.length === 0) {
     throw new Error("At least one file is required to create a pull request.");
@@ -1013,14 +1027,19 @@ export async function createContentPullRequestWithFiles({
       message: file.commitMessage ?? commitMessage,
       content,
       sha: existingSha,
+      ...(author ? { author, committer: author } : {}),
     });
   }
+
+  const fullPrBody = author
+    ? `${prBody}\n- Editor: ${author.name} <${author.email}>`
+    : prBody;
 
   const pullRequest = await client.pulls.create({
     owner: repo.owner,
     repo: repo.repo,
     title: prTitle,
-    body: prBody,
+    body: fullPrBody,
     head: branchName,
     base: baseBranch,
   });

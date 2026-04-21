@@ -5,6 +5,7 @@ import { longDistanceFormSchema, type LongDistanceFormValues } from "@/lib/long-
 import { contentConfig } from "@/lib/content-config";
 import { createContentPullRequest } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
+import { buildPrAuthor } from "@/lib/auth-session";
 
 export type LongDistanceActionState = {
   status: "idle" | "success" | "error";
@@ -20,7 +21,8 @@ export async function saveLongDistanceDraft(
   _previousState: LongDistanceActionState,
   formData: FormData
 ): Promise<LongDistanceActionState> {
-  await requireEditorAccess();
+  const editorSession = await requireEditorAccess();
+  const author = buildPrAuthor(editorSession);
 
   const parsed = longDistanceFormSchema.safeParse({
     slug: formData.get("slug"),
@@ -51,6 +53,7 @@ export async function saveLongDistanceDraft(
         `- Path: long-distance/${values.slug}.md\n` +
         `- Title: ${values.title}`,
       branchName: `shr-admin/long-distance-${values.slug}`,
+      author,
     });
 
     return {

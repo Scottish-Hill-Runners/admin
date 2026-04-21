@@ -5,6 +5,7 @@ import { clubFormSchema, type ClubFormValues } from "@/lib/club-schema";
 import { contentConfig } from "@/lib/content-config";
 import { createContentPullRequest } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
+import { buildPrAuthor } from "@/lib/auth-session";
 
 export type ClubActionState = {
   status: "idle" | "success" | "error";
@@ -30,7 +31,8 @@ export async function saveClubDraft(
   _previousState: ClubActionState,
   formData: FormData
 ): Promise<ClubActionState> {
-  await requireEditorAccess();
+  const editorSession = await requireEditorAccess();
+  const author = buildPrAuthor(editorSession);
 
   const parsed = clubFormSchema.safeParse({
     clubId: formData.get("clubId"),
@@ -63,6 +65,7 @@ export async function saveClubDraft(
         `- Path: clubs/${values.clubId}.md\n` +
         `- Name: ${values.name}`,
       branchName: `shr-admin/club-${values.clubId.toLowerCase()}`,
+      author,
     });
 
     return {

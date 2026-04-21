@@ -4,6 +4,7 @@ import matter from "gray-matter";
 import { contentConfig } from "@/lib/content-config";
 import { createContentPullRequest } from "@/lib/github";
 import { raceFormSchema, type RaceFormValues } from "@/lib/race-schema";
+import { getEditorSession, buildPrAuthor } from "@/lib/auth-session";
 
 export type RaceActionState = {
   status: "idle" | "success" | "error";
@@ -53,6 +54,9 @@ export async function saveRaceDraft(
 
   const values = parsed.data;
 
+  const editorSession = await getEditorSession();
+  const author = buildPrAuthor(editorSession);
+
   try {
     const result = await createContentPullRequest({
       title: values.title,
@@ -66,6 +70,7 @@ export async function saveRaceDraft(
         `- Path: races/${values.raceId}/index.md\n` +
         `- Venue: ${values.venue}`,
       branchName: `shr-admin/race-${values.raceId.toLowerCase()}`,
+      author,
     });
 
     return {

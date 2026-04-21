@@ -4,6 +4,7 @@ import { infoFormSchema, type InfoFormValues } from "@/lib/info-schema";
 import { contentConfig } from "@/lib/content-config";
 import { createContentPullRequest } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
+import { buildPrAuthor } from "@/lib/auth-session";
 
 export type InfoActionState = {
   status: "idle" | "success" | "error";
@@ -27,7 +28,8 @@ export async function saveInfoDraft(
   _previousState: InfoActionState = initialState,
   formData: FormData
 ): Promise<InfoActionState> {
-  await requireEditorAccess();
+  const editorSession = await requireEditorAccess();
+  const author = buildPrAuthor(editorSession);
 
   const parsed = infoFormSchema.safeParse({
     filePath: formData.get("filePath"),
@@ -58,6 +60,7 @@ export async function saveInfoDraft(
         `- Content repo: ${contentConfig.repo}\n` +
         `- Path: ${targetPath}`,
       branchName: `shr-admin/info-${branchSuffix}`,
+      author,
     });
 
     return {

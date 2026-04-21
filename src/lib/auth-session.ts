@@ -11,3 +11,14 @@ export async function getEditorSession() {
     isEditor: !!session,
   };
 }
+
+type EditorSession = Awaited<ReturnType<typeof getEditorSession>>;
+
+export function buildPrAuthor(
+  editorSession: EditorSession
+): { name: string; email: string } | undefined {
+  const email = editorSession.email;
+  if (!email) return undefined;
+  const name = editorSession.session?.user?.name || email.split("@")[0];
+  return { name, email };
+}

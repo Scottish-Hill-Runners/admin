@@ -4,6 +4,7 @@ import { contentConfig } from "@/lib/content-config";
 import { createContentPullRequest, listRaceDrafts } from "@/lib/github";
 import { calendarSchema, type CalendarValues } from "@/lib/calendar-schema";
 import { validateCalendarCsv } from "@/lib/calendar-csv";
+import { getEditorSession, buildPrAuthor } from "@/lib/auth-session";
 
 export type CalendarActionState = {
   status: "idle" | "success" | "error";
@@ -32,6 +33,8 @@ export async function saveCalendarDraft(
   }
 
   const values = parsed.data;
+  const editorSession = await getEditorSession();
+  const author = buildPrAuthor(editorSession);
   const raceItems = await listRaceDrafts();
   const knownRaceIds = raceItems.map((item) => item.raceId);
   const issues = validateCalendarCsv(values.csvText, knownRaceIds);
@@ -63,6 +66,7 @@ export async function saveCalendarDraft(
         "- Path: calendar.csv\n" +
         `- Validation warnings: ${issues.filter((issue) => issue.level === "warning").length}`,
       branchName: `shr-admin/calendar-${Date.now()}`,
+      author,
     });
 
     return {

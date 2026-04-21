@@ -11,7 +11,7 @@ import {
   parseAndValidateCollectionsYaml,
   stringifyCollectionsYaml,
 } from "@/lib/collections-yaml";
-import { getEditorSession } from "@/lib/auth-session";
+import { getEditorSession, buildPrAuthor } from "@/lib/auth-session";
 import { requireEditorAccess } from "@/lib/route-protection";
 
 const MAX_IMAGE_FILES = 20;
@@ -224,6 +224,8 @@ export async function uploadPicturesDraft(
       })
     );
 
+    const editorSession = await getEditorSession();
+    const author = buildPrAuthor(editorSession);
     const branchName = `shr-admin/pictures-${Date.now()}`;
     const result = await createContentPullRequestWithFiles({
       title: `Pictures upload (${files.length} files)`,
@@ -236,6 +238,7 @@ export async function uploadPicturesDraft(
         `- Files uploaded: ${files.length}\n` +
         "- Target folder: Pictures/",
       branchName,
+      author,
     });
 
     return {
@@ -259,6 +262,7 @@ export async function saveCollectionsYamlDraft(
 ): Promise<CollectionsYamlState> {
   await requireEditorAccess();
   const editorSession = await getEditorSession();
+  const author = buildPrAuthor(editorSession);
   const editorName = editorSession.session?.user?.name ?? null;
 
   const parsed = collectionsSectionUpdateSchema.safeParse({
@@ -453,6 +457,7 @@ export async function saveCollectionsYamlDraft(
           `- Target section: ${targetSummary}\n` +
           "- Validated sections: collections, raceImageConfig, raceImagesBySlug",
         branchName: `shr-admin/collections-yaml-${Date.now()}`,
+        author,
       });
 
       return {
@@ -575,6 +580,7 @@ export async function saveCollectionsYamlDraft(
         `- Target section: ${targetSummary}\n` +
         "- Validated sections: collections, raceImageConfig, raceImagesBySlug",
       branchName: `shr-admin/collections-yaml-${Date.now()}`,
+      author,
     });
 
     return {
