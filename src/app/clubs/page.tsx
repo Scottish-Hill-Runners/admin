@@ -3,7 +3,7 @@ import { ClubEditorForm } from "@/components/club-editor-form";
 import { requireEditorAccess } from "@/lib/route-protection";
 
 export default async function ClubsPage() {
-  await requireEditorAccess();
+  await requireEditorAccess({ callbackUrl: "/clubs" });
 
   return (
     <EditorialShell

@@ -13,8 +13,16 @@ export async function verifyMagicLink(
     redirect("/sign-in?error=InvalidToken");
   }
 
+  const rawCallbackUrl = formData.get("callbackUrl");
+  const redirectTo =
+    typeof rawCallbackUrl === "string" &&
+    rawCallbackUrl.startsWith("/") &&
+    !rawCallbackUrl.startsWith("//")
+      ? rawCallbackUrl
+      : "/";
+
   try {
-    await signIn("magic-link", { token, redirectTo: "/" });
+    await signIn("magic-link", { token, redirectTo });
   } catch (err) {
     if (err instanceof AuthError) {
       redirect("/sign-in?error=InvalidToken");

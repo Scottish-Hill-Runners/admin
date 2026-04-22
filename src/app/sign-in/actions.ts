@@ -34,7 +34,14 @@ export async function requestMagicLink(
       headersList.get("x-forwarded-proto") ??
       (host.startsWith("localhost") ? "http" : "https");
     const baseUrl = env.NEXTAUTH_URL ?? `${proto}://${host}`;
-    await sendMagicLinkEmail(parsed.data, token, baseUrl);
+    const rawCallbackUrl = formData.get("callbackUrl");
+    const callbackUrl =
+      typeof rawCallbackUrl === "string" &&
+      rawCallbackUrl.startsWith("/") &&
+      !rawCallbackUrl.startsWith("//")
+        ? rawCallbackUrl
+        : undefined;
+    await sendMagicLinkEmail(parsed.data, token, baseUrl, callbackUrl);
     return { status: "sent" };
   } catch (err) {
     console.error("Magic link send error:", err);

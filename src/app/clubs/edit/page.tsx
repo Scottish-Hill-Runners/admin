@@ -12,10 +12,18 @@ type ClubsEditPageProps = {
 };
 
 export default async function ClubsEditPage({ searchParams }: ClubsEditPageProps) {
-  await requireEditorAccess();
   const params = await searchParams;
   const clubId = params?.clubId?.trim();
   const clubQuery = params?.clubQuery?.trim() ?? "";
+
+  const callbackParts: string[] = [];
+  if (clubId) callbackParts.push(`clubId=${encodeURIComponent(clubId)}`);
+  if (clubQuery) callbackParts.push(`clubQuery=${encodeURIComponent(clubQuery)}`);
+  const callbackUrl = callbackParts.length > 0
+    ? `/clubs/edit?${callbackParts.join("&")}`
+    : "/clubs/edit";
+
+  await requireEditorAccess({ callbackUrl });
 
   const [initialValues, clubItems] = await Promise.all([
     clubId ? getClubDraft(clubId) : Promise.resolve(null),

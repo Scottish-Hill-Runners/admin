@@ -104,13 +104,16 @@ export async function verifyMagicToken(token: string): Promise<VerifyResult> {
 export async function sendMagicLinkEmail(
   email: string,
   token: string,
-  baseUrl: string
+  baseUrl: string,
+  callbackUrl?: string
 ): Promise<void> {
   const apiKey = env.RESEND_API_KEY;
   if (!apiKey) throw new Error("RESEND_API_KEY is not configured");
 
   const base = baseUrl.replace(/\/$/, "");
-  const verifyUrl = `${base}/sign-in/verify?token=${encodeURIComponent(token)}`;
+  const verifyParams = new URLSearchParams({ token });
+  if (callbackUrl) verifyParams.set("callbackUrl", callbackUrl);
+  const verifyUrl = `${base}/sign-in/verify?${verifyParams.toString()}`;
   const from = env.EMAIL_FROM ?? "SHR Admin <no-reply@resend.dev>";
 
   const response = await fetch("https://api.resend.com/emails", {

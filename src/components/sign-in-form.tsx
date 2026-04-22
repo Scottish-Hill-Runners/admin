@@ -130,6 +130,9 @@ export function SignInForm({ callbackUrl, providers }: SignInFormProps) {
             </div>
           ) : (
             <form action={magicLinkAction} className="grid gap-3">
+              {nextCallbackUrl !== "/" ? (
+                <input type="hidden" name="callbackUrl" value={nextCallbackUrl} />
+              ) : null}
               <label htmlFor="sign-in-email" className="text-sm font-medium text-stone-700">
                 Sign in with email
               </label>

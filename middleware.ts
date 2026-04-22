@@ -6,9 +6,11 @@ export default auth((request) => {
   }
 
   const signInUrl = new URL("/sign-in", request.nextUrl.origin);
+  const callbackPath = request.nextUrl.pathname + request.nextUrl.search;
+  signInUrl.searchParams.set("callbackUrl", callbackPath);
   return Response.redirect(signInUrl);
 });
 
 export const config = {
-  matcher: ["/news/:path*", "/races/:path*", "/results/:path*"],
+  matcher: ["/news/:path*", "/races/:path*", "/results/:path*", "/clubs/:path*"],
 };

@@ -4,10 +4,11 @@ import { useActionState, useEffect, useRef } from "react";
 
 type MagicLinkVerifierProps = {
   token: string;
+  callbackUrl?: string;
   action: (prev: null, formData: FormData) => Promise<null>;
 };
 
-export function MagicLinkVerifier({ token, action }: MagicLinkVerifierProps) {
+export function MagicLinkVerifier({ token, callbackUrl, action }: MagicLinkVerifierProps) {
   const [, formAction, isPending] = useActionState(action, null);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -40,6 +41,7 @@ export function MagicLinkVerifier({ token, action }: MagicLinkVerifierProps) {
       </p>
       <form ref={formRef} action={formAction}>
         <input type="hidden" name="token" value={token} />
+        {callbackUrl ? <input type="hidden" name="callbackUrl" value={callbackUrl} /> : null}
       </form>
     </div>
   );
