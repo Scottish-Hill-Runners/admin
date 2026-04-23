@@ -9,7 +9,7 @@ export const clubFormSchema = z.object({
       "Club ID must contain letters and numbers only (no spaces or hyphens)."
     ),
   name: z.string().min(2, "Club name must be at least 2 characters."),
-  aka: z.string().optional(),
+  aka: z.array(z.string()).optional(),
   web: z.union([z.literal(""), z.url("Website must be a valid URL.")]),
   content: z.string().min(10, "Description must be at least 10 characters."),
 });

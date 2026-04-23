@@ -14,15 +14,9 @@ export type ClubActionState = {
 };
 
 function buildClubMarkdown(values: ClubFormValues): string {
-  const akaList = values.aka
-    ? values.aka
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-    : [];
   return matter.stringify(values.content.trim(), {
     name: values.name,
-    ...(akaList.length > 0 ? { aka: akaList } : {}),
+    ...(values.aka && values.aka.length > 0 ? { aka: values.aka } : {}),
     ...(values.web ? { web: values.web } : {}),
   });
 }
@@ -37,7 +31,10 @@ export async function saveClubDraft(
   const parsed = clubFormSchema.safeParse({
     clubId: formData.get("clubId"),
     name: formData.get("name"),
-    aka: formData.get("aka"),
+    aka: ((formData.get("aka") as string) ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
     web: formData.get("web"),
     content: formData.get("content"),
   });

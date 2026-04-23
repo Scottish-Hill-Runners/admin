@@ -1078,12 +1078,7 @@ export async function getClubDraft(clubId: string): Promise<ClubInfoFormData | n
     const rawAka = parsed.data.aka;
     const aka: string[] = Array.isArray(rawAka)
       ? rawAka.map(String).filter(Boolean)
-      : rawAka
-        ? String(rawAka)
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : [];
+      : [];
 
     return {
       clubId: safeClubId,
