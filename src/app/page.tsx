@@ -94,7 +94,7 @@ export default function Home() {
                   Upload pictures and edit collections
                 </h4>
                 <p className="mt-3 text-base leading-6 text-stone-600">
-                  Upload image assets to Pictures/ and update collections.yaml in a validated PR.
+                  Upload image assets to blobs/ and update collections.yaml in a validated PR.
                 </p>
               </Link>
             </div>

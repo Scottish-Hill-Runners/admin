@@ -217,7 +217,7 @@ export async function uploadPicturesDraft(
         const bytes = Buffer.from(await file.arrayBuffer());
 
         return {
-          path: `Pictures/${safeName}`,
+          path: `blobs/${safeName}`,
           content: bytes.toString("base64"),
           encoding: "base64" as const,
         };
@@ -226,17 +226,17 @@ export async function uploadPicturesDraft(
 
     const editorSession = await getEditorSession();
     const author = buildPrAuthor(editorSession);
-    const branchName = `shr-admin/pictures-${Date.now()}`;
+    const branchName = `shr-admin/blobs-${Date.now()}`;
     const result = await createContentPullRequestWithFiles({
       title: `Pictures upload (${files.length} files)`,
       files,
       commitMessage: `Upload pictures (${files.length} files)`,
       prTitle: `Pictures: upload ${files.length} image${files.length === 1 ? "" : "s"}`,
       prBody:
-        "Automated pictures upload created by SHR Admin.\n\n" +
+        `Automated pictures upload created by ${author?.name ?? author?.email ?? "SHR Admin"}.\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
         `- Files uploaded: ${files.length}\n` +
-        "- Target folder: Pictures/",
+        "- Target folder: blobs/",
       branchName,
       author,
     });
@@ -342,14 +342,14 @@ export async function saveCollectionsYamlDraft(
       };
     }
 
-    const invalidRacePaths = raceImagePaths.filter((path) => !path.startsWith("Pictures/"));
+    const invalidRacePaths = raceImagePaths.filter((path) => !path.startsWith("blobs/"));
     if (invalidRacePaths.length > 0) {
       return {
         status: "error",
-        message: "Race image paths must start with Pictures/.",
+        message: "Race image paths must start with blobs/.",
         fieldErrors: {
           imagePaths: invalidRacePaths.map(
-            (path) => `${path}: image paths must start with Pictures/.`
+            (path) => `${path}: image paths must start with blobs/.`
           ),
         },
       };
@@ -485,12 +485,12 @@ export async function saveCollectionsYamlDraft(
       };
     }
 
-    if (!imagePath.startsWith("Pictures/")) {
+    if (!imagePath.startsWith("blobs/")) {
       return {
         status: "error",
-        message: "Image path must start with Pictures/.",
+        message: "Image path must start with blobs/.",
         fieldErrors: {
-          imagePath: ["Image path must start with Pictures/."],
+          imagePath: ["Image path must start with blobs/."],
         },
       };
     }

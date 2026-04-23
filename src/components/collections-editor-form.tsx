@@ -119,7 +119,7 @@ export function CollectionsEditorForm({
       selectedFileNames
         .map((name) => toSafePictureFilename(name))
         .filter((value): value is string => !!value)
-        .map((safeName) => `Pictures/${safeName}`),
+        .map((safeName) => `blobs/${safeName}`),
     [selectedFileNames]
   );
   const raceImagePaths = useMemo(
@@ -173,10 +173,10 @@ export function CollectionsEditorForm({
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <div className="mb-5">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
-            Upload images to Pictures/
+            Upload images to blobs/
           </p>
           <p className="mt-2 text-sm leading-6 text-stone-700">
-            Select one or more images and open a PR that adds them to the Pictures/
+            Select one or more images and open a PR that adds them to the blobs/
             folder in the content repository.
           </p>
         </div>
@@ -327,7 +327,7 @@ export function CollectionsEditorForm({
                   value={manualRaceImagePaths}
                   onChange={(event) => setManualRaceImagePaths(event.target.value)}
                   rows={5}
-                  placeholder="Add manual paths, one per line, e.g. Pictures/race-day-1.jpg"
+                  placeholder="Add manual paths, one per line, e.g. blobs/race-day-1.jpg"
                   className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
                 />
               </label>
@@ -413,7 +413,7 @@ export function CollectionsEditorForm({
                 </span>
                 <input
                   name="imagePath"
-                  placeholder="Pictures/example.jpg"
+                  placeholder="blobs/example.jpg"
                   className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
                 />
               </label>

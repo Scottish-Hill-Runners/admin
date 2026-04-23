@@ -3,7 +3,7 @@ import { z } from "zod";
 const picturePathSchema = z
   .string()
   .min(1, "Image path is required.")
-  .startsWith("Pictures/", "Image paths must start with Pictures/.");
+  .startsWith("blobs/", "Image paths must start with blobs/.");
 
 const collectionItemSchema = z.object({
   path: picturePathSchema,
