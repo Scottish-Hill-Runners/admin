@@ -1092,6 +1092,25 @@ export async function getClubDraft(clubId: string): Promise<ClubInfoFormData | n
   }
 }
 
+export async function listAllClubNameSet(): Promise<Set<string>> {
+  const clubList = await listClubDrafts();
+  const nameSet = new Set<string>();
+  await Promise.all(
+    clubList.map(async ({ clubId }) => {
+      const club = await getClubDraft(clubId);
+      if (club) {
+        nameSet.add(club.name.trim().toLowerCase());
+        for (const alias of club.aka) {
+          if (alias.trim()) {
+            nameSet.add(alias.trim().toLowerCase());
+          }
+        }
+      }
+    })
+  );
+  return nameSet;
+}
+
 export async function listChampionshipDrafts(): Promise<ChampionshipListItem[]> {
   try {
     const entries = await getRepositoryDirectory("championships");

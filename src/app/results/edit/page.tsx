@@ -6,6 +6,7 @@ import {
   getRaceResultsDraft,
   listRaceDrafts,
   listRaceResultsDrafts,
+  listAllClubNameSet,
 } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
 
@@ -41,12 +42,13 @@ export default async function ResultsEditPage({ searchParams }: ResultsEditPageP
     : "/results/edit";
   await requireEditorAccess({ callbackUrl });
 
-  const [raceItems, resultInitialValues, resultItems] = await Promise.all([
+  const [raceItems, resultInitialValues, resultItems, clubNameSet] = await Promise.all([
     listRaceDrafts(),
     raceId && resultsYear
       ? getRaceResultsDraft(raceId, resultsYear)
       : Promise.resolve(null),
     raceId ? listRaceResultsDrafts(raceId) : Promise.resolve([]),
+    listAllClubNameSet(),
   ]);
 
   return (
@@ -80,6 +82,7 @@ export default async function ResultsEditPage({ searchParams }: ResultsEditPageP
           raceId={raceId}
           year={resultsYear}
           csvText={resultInitialValues.csvText}
+          knownClubNames={[...clubNameSet]}
         />
       ) : null}
 

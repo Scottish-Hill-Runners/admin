@@ -93,6 +93,17 @@ function validateTime(time: string) {
   return /(\d?\d)[:.h](\d\d)(?:[:.m](\d\d))?/i.test(time);
 }
 
+function parseTimeToSeconds(time: string): number | null {
+  const match = /^(\d{1,2})[:.h](\d{2})(?:[:.m](\d{2}))?$/i.exec(time.trim());
+  if (!match) {
+    return null;
+  }
+  const a = Number.parseInt(match[1], 10);
+  const b = Number.parseInt(match[2], 10);
+  const c = match[3] !== undefined ? Number.parseInt(match[3], 10) : null;
+  return c !== null ? a * 3600 + b * 60 + c : a * 60 + b;
+}
+
 function parseCategoryGroup(category: string): "male" | "female" | "nonBinary" | null {
   const normalized = category.trim().toUpperCase();
 
@@ -196,7 +207,10 @@ export function extractRaceResultsWinnerSummary(csvText: string): RaceResultsWin
   };
 }
 
-export function validateRaceResultsCsv(csvText: string): CsvIssue[] {
+export function validateRaceResultsCsv(
+  csvText: string,
+  options?: { knownClubNames?: ReadonlySet<string> }
+): CsvIssue[] {
   const issues: CsvIssue[] = [];
   const { headers, rows } = parseCsv(csvText);
 
@@ -258,6 +272,11 @@ export function validateRaceResultsCsv(csvText: string): CsvIssue[] {
     });
   }
 
+  const knownClubNames = options?.knownClubNames;
+
+  let prevPosition: number | null = null;
+  let prevTimeSeconds: number | null = null;
+
   rows.forEach((row, index) => {
     const rowNumber = index + 2;
     const position = findValue(row, POSITION_KEYS);
@@ -266,13 +285,25 @@ export function validateRaceResultsCsv(csvText: string): CsvIssue[] {
       `${findValue(row, FIRST_NAME_KEYS)} ${findValue(row, SURNAME_KEYS)}`.trim();
     const time = findValue(row, TIME_KEYS);
     const category = findValue(row, CATEGORY_KEYS);
+    const club = findValue(row, CLUB_KEYS);
 
-    if (!position || Number.isNaN(Number.parseInt(position, 10))) {
+    const parsedPosition = position ? Number.parseInt(position, 10) : NaN;
+
+    if (!position || Number.isNaN(parsedPosition)) {
       issues.push({
         row: rowNumber,
         level: "error",
         message: `Invalid position '${position || "<empty>"}'`,
       });
+    } else {
+      if (prevPosition !== null && parsedPosition < prevPosition) {
+        issues.push({
+          row: rowNumber,
+          level: "warning",
+          message: `Position ${parsedPosition} is less than previous position ${prevPosition} — rows may be out of order`,
+        });
+      }
+      prevPosition = parsedPosition;
     }
 
     if (!name) {
@@ -295,6 +326,18 @@ export function validateRaceResultsCsv(csvText: string): CsvIssue[] {
         level: "warning",
         message: `Unrecognized time format '${time}'`,
       });
+    } else {
+      const timeSeconds = parseTimeToSeconds(time);
+      if (timeSeconds !== null) {
+        if (prevTimeSeconds !== null && timeSeconds < prevTimeSeconds) {
+          issues.push({
+            row: rowNumber,
+            level: "warning",
+            message: `Time '${time}' is earlier than the previous row's time — rows may be out of order`,
+          });
+        }
+        prevTimeSeconds = timeSeconds;
+      }
     }
 
     if (!category) {
@@ -308,6 +351,14 @@ export function validateRaceResultsCsv(csvText: string): CsvIssue[] {
         row: rowNumber,
         level: "warning",
         message: `Unexpected runner category '${category}' (expected pattern: (M|F|NB?)\\d+)`,
+      });
+    }
+
+    if (knownClubNames && club && !knownClubNames.has(club.toLowerCase())) {
+      issues.push({
+        row: rowNumber,
+        level: "warning",
+        message: `Club '${club}' not found in club list`,
       });
     }
   });

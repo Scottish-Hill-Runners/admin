@@ -47,9 +47,10 @@ type ResultsEditFormProps = {
   raceId: string;
   year: string;
   csvText: string;
+  knownClubNames?: string[];
 };
 
-export function ResultsEditForm({ raceId, year, csvText }: ResultsEditFormProps) {
+export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: ResultsEditFormProps) {
   const [state, formAction, isPending] = useActionState(saveResultsDraft, initialState);
   const buttonLabel = isPending ? "Updating..." : "Update results draft";
 
@@ -62,7 +63,14 @@ export function ResultsEditForm({ raceId, year, csvText }: ResultsEditFormProps)
 
   const csvTextValue = useMemo(() => serializeCsvGrid(grid), [grid]);
 
-  const liveIssues = useMemo(() => validateRaceResultsCsv(csvTextValue), [csvTextValue]);
+  const clubNameSet = useMemo(
+    () => (knownClubNames ? new Set(knownClubNames) : undefined),
+    [knownClubNames]
+  );
+  const liveIssues = useMemo(
+    () => validateRaceResultsCsv(csvTextValue, { knownClubNames: clubNameSet }),
+    [csvTextValue, clubNameSet]
+  );
   const liveErrors = liveIssues.filter((issue) => issue.level === "error");
   const liveWarnings = liveIssues.filter((issue) => issue.level === "warning");
   const blockingErrorsExist = liveErrors.length > 0;

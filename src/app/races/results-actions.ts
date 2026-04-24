@@ -1,7 +1,7 @@
 "use server";
 
 import { contentConfig } from "@/lib/content-config";
-import { createContentPullRequest } from "@/lib/github";
+import { createContentPullRequest, listAllClubNameSet } from "@/lib/github";
 import {
   extractRaceResultsWinnerSummary,
   validateRaceResultsCsv,
@@ -155,7 +155,8 @@ export async function saveResultsDraft(
   const values = parsed.data;
   const editorSession = await getEditorSession();
   const author = buildPrAuthor(editorSession);
-  const issues = validateRaceResultsCsv(values.csvText);
+  const knownClubNames = await listAllClubNameSet();
+  const issues = validateRaceResultsCsv(values.csvText, { knownClubNames });
   const blockingIssues = issues.filter((issue) => issue.level === "error");
   const issueMessages = issues.map((issue) =>
     issue.row ? `${issue.level.toUpperCase()} row ${issue.row}: ${issue.message}` : `${issue.level.toUpperCase()}: ${issue.message}`

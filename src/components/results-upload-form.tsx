@@ -31,6 +31,7 @@ type ResultsUploadFormProps = {
     csvText: string;
   } | null;
   raceItems?: Array<{ raceId: string }>;
+  knownClubNames?: string[];
 };
 
 function normalizeLineEndings(value: string): string {
@@ -92,7 +93,7 @@ function InputField({ label, name, placeholder, defaultValue, errors }: InputPro
   );
 }
 
-export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUploadFormProps) {
+export function ResultsUploadForm({ initialValues, raceItems = [], knownClubNames }: ResultsUploadFormProps) {
   const router = useRouter();
   const [state, formAction, isPending] = useActionState(saveResultsDraft, initialState);
   const buttonLabel = isPending ? "Validating..." : "Create results draft PR";
@@ -106,9 +107,13 @@ export function ResultsUploadForm({ initialValues, raceItems = [] }: ResultsUplo
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const debouncedCsvTextValue = useDebouncedValue(csvTextValue, LIVE_VALIDATION_DEBOUNCE_MS);
   const preview = useMemo(() => parsePreview(debouncedCsvTextValue), [debouncedCsvTextValue]);
+  const clubNameSet = useMemo(
+    () => (knownClubNames ? new Set(knownClubNames) : undefined),
+    [knownClubNames]
+  );
   const liveIssues = useMemo(
-    () => validateRaceResultsCsv(debouncedCsvTextValue),
-    [debouncedCsvTextValue]
+    () => validateRaceResultsCsv(debouncedCsvTextValue, { knownClubNames: clubNameSet }),
+    [debouncedCsvTextValue, clubNameSet]
   );
   const liveErrors = liveIssues.filter((issue) => issue.level === "error");
   const liveWarnings = liveIssues.filter((issue) => issue.level === "warning");
