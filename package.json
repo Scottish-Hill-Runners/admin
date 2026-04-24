@@ -16,6 +16,8 @@
     "@mdxeditor/editor": "^3.54.0",
     "@octokit/auth-app": "^8.2.0",
     "@octokit/rest": "^22.0.1",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "gray-matter": "^4.0.3",
     "next": "16.2.1",
     "next-auth": "^5.0.0-beta.30",
