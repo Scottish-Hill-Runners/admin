@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { contentConfig } from "@/lib/content-config";
 import { createContentPullRequest, listAllClubNameSet } from "@/lib/github";
 import {
@@ -22,7 +23,7 @@ export type ResultsUploadState = {
 
 function formatWinnerLine(label: string, winner: { name: string; club: string; time: string } | null) {
   if (!winner) {
-    return `- ${label}: not available in this CSV`;
+    return "";
   }
 
   const clubPart = winner.club ? ` (${winner.club})` : "";
@@ -148,7 +149,7 @@ export async function saveResultsDraft(
     return {
       status: "error",
       message: "Please fix the highlighted fields before continuing.",
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
     };
   }
 
@@ -171,6 +172,25 @@ export async function saveResultsDraft(
   }
 
   try {
+    const warnings = issues.filter((issue) => issue.level === "warning");
+    const uploaderName = editorSession.session?.user?.name ?? editorSession.email ?? "unknown";
+    const uploaderEmail = editorSession.email;
+    const uploaderLine = uploaderEmail
+      ? `Uploaded by ${uploaderName} (${uploaderEmail}).`
+      : `Uploaded by ${uploaderName}.`;
+
+    const warningsSection =
+      warnings.length === 0
+        ? "No validation warnings."
+        : [
+            `### Validation warnings (${warnings.length})`,
+            ...warnings.map((issue) =>
+              issue.row
+                ? `- Row ${issue.row}: ${issue.message}`
+                : `- ${issue.message}`
+            ),
+          ].join("\n");
+
     const result = await createContentPullRequest({
       title: `${values.raceId} ${values.year} results`,
       path: `races/${values.raceId}/${values.year}.csv`,
@@ -178,10 +198,10 @@ export async function saveResultsDraft(
       commitMessage: `Upload results: ${values.raceId} ${values.year}`,
       prTitle: `Results: ${values.raceId} ${values.year}`,
       prBody:
-        `Automated results draft created by SHR Admin.\n\n` +
+        `${uploaderLine}\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
-        `- Path: races/${values.raceId}/${values.year}.csv\n` +
-        `- Validation warnings: ${issues.filter((issue) => issue.level === "warning").length}`,
+        `- Path: races/${values.raceId}/${values.year}.csv\n\n` +
+        warningsSection,
       branchName: `shr-admin/results-${values.raceId.toLowerCase()}-${values.year.toLowerCase()}`,
       author,
     });

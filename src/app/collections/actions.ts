@@ -281,7 +281,7 @@ export async function saveCollectionsYamlDraft(
     return {
       status: "error",
       message: "Please fix the highlighted fields before continuing.",
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
     };
   }
 

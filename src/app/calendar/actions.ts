@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { contentConfig } from "@/lib/content-config";
 import { createContentPullRequest, listRaceDrafts } from "@/lib/github";
 import { calendarSchema, type CalendarValues } from "@/lib/calendar-schema";
@@ -28,7 +29,7 @@ export async function saveCalendarDraft(
     return {
       status: "error",
       message: "Please fix the highlighted fields before continuing.",
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
     };
   }
 

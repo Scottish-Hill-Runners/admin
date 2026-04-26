@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import matter from "gray-matter";
 import {
   championshipFormSchema,
@@ -42,7 +43,7 @@ export async function saveChampionshipDraft(
     return {
       status: "error",
       message: "Please fix the highlighted fields before continuing.",
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
     };
   }
 

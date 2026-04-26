@@ -5,7 +5,7 @@ const SURNAME_KEYS = ["Surname", "LastName"];
 const CLUB_KEYS = ["Club"];
 const CATEGORY_KEYS = ["RunnerCategory", "Category", "Cat"];
 const TIME_KEYS = ["FinishTime", "Time"];
-const RUNNER_CATEGORY_PATTERN = /^(M|F|NB?)\d{0,2}$/;
+const RUNNER_CATEGORY_PATTERN = /^(M|F|A|NB?)\d{0,2}$/;
 
 export type CsvIssue = {
   row: number | null;
@@ -111,7 +111,7 @@ function parseCategoryGroup(category: string): "male" | "female" | "nonBinary" |
     return null;
   }
 
-  if (normalized.startsWith("NB") || normalized === "N") {
+  if (normalized.startsWith("NB") || normalized === "N" || normalized === "A") {
     return "nonBinary";
   }
 
@@ -350,11 +350,11 @@ export function validateRaceResultsCsv(
       issues.push({
         row: rowNumber,
         level: "warning",
-        message: `Unexpected runner category '${category}' (expected pattern: (M|F|NB?)\\d+)`,
+        message: `Unexpected runner category '${category}' (expected pattern: (M|F|A|NB?)\\d+)`,
       });
     }
 
-    if (knownClubNames && club && !knownClubNames.has(club.toLowerCase())) {
+    if (knownClubNames && club && club.toLowerCase() !== "unattached" && !knownClubNames.has(club.toLowerCase())) {
       issues.push({
         row: rowNumber,
         level: "warning",

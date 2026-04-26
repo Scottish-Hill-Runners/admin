@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { infoFormSchema, type InfoFormValues } from "@/lib/info-schema";
 import { contentConfig } from "@/lib/content-config";
 import { createContentPullRequest } from "@/lib/github";
@@ -40,7 +41,7 @@ export async function saveInfoDraft(
     return {
       status: "error",
       message: "Please fix the highlighted fields before continuing.",
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
     };
   }
 
