@@ -58,11 +58,11 @@ export async function saveClubDraft(
       commitMessage: `Update club info: ${values.name}`,
       prTitle: `Club info: ${values.name}`,
       prBody:
-        `Automated club info draft created by SHR Admin.\n\n` +
+        `Automated club info draft created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
         `- Path: clubs/${values.clubId}.md\n` +
         `- Name: ${values.name}`,
-      branchName: `shr-admin/club-${values.clubId.toLowerCase()}`,
+      branchName: `shr-admin/club-${values.clubId}`,
       author,
     });
 

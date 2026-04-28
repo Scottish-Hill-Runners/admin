@@ -57,7 +57,7 @@ export async function saveInfoDraft(
       commitMessage: `Update info markdown: ${values.filePath}`,
       prTitle: `Info markdown: ${values.filePath}`,
       prBody:
-        `Automated info markdown draft created by SHR Admin.\n\n` +
+        `Automated info markdown draft created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
         `- Path: ${targetPath}`,
       branchName: `shr-admin/info-${branchSuffix}`,

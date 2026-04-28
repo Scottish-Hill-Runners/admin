@@ -66,11 +66,11 @@ export async function saveRaceDraft(
       commitMessage: `Update race info: ${values.title}`,
       prTitle: `Race info: ${values.title}`,
       prBody:
-        `Automated race metadata draft created by SHR Admin.\n\n` +
+        `Automated race metadata draft created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
         `- Path: races/${values.raceId}/index.md\n` +
         `- Venue: ${values.venue}`,
-      branchName: `shr-admin/race-${values.raceId.toLowerCase()}`,
+      branchName: `shr-admin/race-${values.raceId}`,
       author,
     });
 

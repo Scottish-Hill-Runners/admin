@@ -233,7 +233,7 @@ export async function uploadPicturesDraft(
       commitMessage: `Upload pictures (${files.length} files)`,
       prTitle: `Pictures: upload ${files.length} image${files.length === 1 ? "" : "s"}`,
       prBody:
-        `Automated pictures upload created by ${author?.name ?? author?.email ?? "SHR Admin"}.\n\n` +
+        `Automated pictures upload created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
         `- Files uploaded: ${files.length}\n` +
         "- Target folder: blobs/",
@@ -451,7 +451,7 @@ export async function saveCollectionsYamlDraft(
         commitMessage: `Update collections.yaml (${targetSummary})`,
         prTitle: "Collections: update collections.yaml",
         prBody:
-          "Automated collections.yaml update created by SHR Admin.\n\n" +
+          `Automated collections.yaml update created by ${author ? `${author.name} (${author.email})` : "unknown"}.\n\n` +
           `- Content repo: ${contentConfig.repo}\n` +
           "- Path: collections.yaml\n" +
           `- Target section: ${targetSummary}\n` +
@@ -574,7 +574,7 @@ export async function saveCollectionsYamlDraft(
       commitMessage: `Update collections.yaml (${targetSummary})`,
       prTitle: "Collections: update collections.yaml",
       prBody:
-        "Automated collections.yaml update created by SHR Admin.\n\n" +
+`Automated collections.yaml update created by ${author ? `${author.name} (${author.email})` : "unknown"}.\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
         "- Path: collections.yaml\n" +
         `- Target section: ${targetSummary}\n` +

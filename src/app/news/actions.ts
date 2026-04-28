@@ -114,7 +114,7 @@ export async function saveNewsDraft(
       commitMessage: `Create news draft: ${values.title}`,
       prTitle: `News: ${values.title}`,
       prBody:
-        `Automated draft created by SHR Admin.\n\n` +
+        `Automated draft created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
         `- Path: ${filePath}\n` +
         `- Date: ${values.date}`,

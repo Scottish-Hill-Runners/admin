@@ -62,7 +62,7 @@ export async function saveCalendarDraft(
       commitMessage: "Update calendar.csv",
       prTitle: "Calendar: update calendar.csv",
       prBody:
-        "Automated calendar draft created by SHR Admin.\n\n" +
+        `Automated calendar draft created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
         "- Path: calendar.csv\n" +
         `- Validation warnings: ${issues.filter((issue) => issue.level === "warning").length}`,

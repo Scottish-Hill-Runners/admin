@@ -57,11 +57,11 @@ export async function saveChampionshipDraft(
       commitMessage: `Update championship info: ${values.title}`,
       prTitle: `Championship: ${values.title}`,
       prBody:
-        `Automated championship draft created by SHR Admin.\n\n` +
+        `Automated championship draft created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
         `- Path: championships/${values.championshipId}.md\n` +
         `- Title: ${values.title}`,
-      branchName: `shr-admin/championship-${values.championshipId.toLowerCase()}`,
+      branchName: `shr-admin/championship-${values.championshipId}`,
       author,
     });
 

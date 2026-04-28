@@ -49,7 +49,7 @@ export async function saveLongDistanceDraft(
       commitMessage: `Update long-distance report: ${values.title}`,
       prTitle: `Long distance: ${values.title}`,
       prBody:
-        `Automated long-distance report draft created by SHR Admin.\n\n` +
+        `Automated long-distance report draft created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
         `- Path: long-distance/${values.slug}.md\n` +
         `- Title: ${values.title}`,
