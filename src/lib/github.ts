@@ -531,7 +531,9 @@ export async function getContentFile(path: string): Promise<string> {
   return getRepositoryFile(path);
 }
 
-async function getRepositoryDirectory(path: string) {
+async function getRepositoryDirectory(path: string): Promise<RepositoryDirectoryEntry[]>;
+async function getRepositoryDirectory(path: string, options: { nullOn404: true }): Promise<RepositoryDirectoryEntry[] | null>;
+async function getRepositoryDirectory(path: string, options?: { nullOn404?: boolean }): Promise<RepositoryDirectoryEntry[] | null> {
   const client = getGitHubClient();
   if (!client) {
     throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
@@ -539,16 +541,25 @@ async function getRepositoryDirectory(path: string) {
 
   const repo = parseRepoSlug(contentConfig.repo);
   const normalizedPath = normalizeRepoPath(path);
-  const response = await requestGitHubGet<RepositoryDirectoryEntry[] | RepositoryFileEntry>(
-    client,
-    "GET /repos/{owner}/{repo}/contents/{path}",
-    {
-    owner: repo.owner,
-    repo: repo.repo,
-    path: normalizedPath,
-    ref: contentConfig.branch,
+
+  let response: RepositoryDirectoryEntry[] | RepositoryFileEntry;
+  try {
+    response = await requestGitHubGet<RepositoryDirectoryEntry[] | RepositoryFileEntry>(
+      client,
+      "GET /repos/{owner}/{repo}/contents/{path}",
+      {
+        owner: repo.owner,
+        repo: repo.repo,
+        path: normalizedPath,
+        ref: contentConfig.branch,
+      }
+    );
+  } catch (error) {
+    if (options?.nullOn404 && getErrorStatus(error) === 404) {
+      return null;
     }
-  );
+    throw error;
+  }
 
   if (!Array.isArray(response)) {
     throw new Error(`Expected a directory at ${normalizedPath}`);
@@ -911,25 +922,24 @@ export async function getCollectionsYamlDraft(): Promise<string | null> {
 }
 
 export async function listRaceResultsDrafts(raceId: string): Promise<RaceResultListItem[]> {
-  try {
-    const safeRaceId = toSafeRepoPathSegment(raceId);
-    if (!safeRaceId) {
-      return [];
-    }
-
-    const entries = await getRepositoryDirectory(`races/${safeRaceId}`);
-
-    return entries
-      .filter((entry) => entry.type === "file" && entry.name.endsWith(".csv"))
-      .map((entry) => ({
-        raceId: safeRaceId,
-        year: entry.name.replace(/\.csv$/, ""),
-        path: `races/${safeRaceId}/${entry.name}`,
-      }))
-      .sort((left, right) => right.year.localeCompare(left.year));
-  } catch {
+  const safeRaceId = toSafeRepoPathSegment(raceId);
+  if (!safeRaceId) {
     return [];
   }
+
+  const entries = await getRepositoryDirectory(`races/${safeRaceId}`, { nullOn404: true });
+  if (!entries) {
+    return [];
+  }
+
+  return entries
+    .filter((entry) => entry.type === "file" && entry.name.endsWith(".csv"))
+    .map((entry) => ({
+      raceId: safeRaceId,
+      year: entry.name.replace(/\.csv$/, ""),
+      path: `races/${safeRaceId}/${entry.name}`,
+    }))
+    .sort((left, right) => right.year.localeCompare(left.year));
 }
 
 export async function createContentPullRequest({
