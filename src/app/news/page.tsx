@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { EditorialShell } from "@/components/editorial-shell";
 import { NewsEditorForm } from "@/components/news-editor-form";
-import { suggestNewsSlugSuffixForDate } from "@/lib/github";
+import { listNewsDrafts, suggestNewsSlugSuffixForDate } from "@/lib/github";
 import { isIsoNewsDate } from "@/lib/news-slug";
 import { requireEditorAccess } from "@/lib/route-protection";
 
@@ -15,8 +16,8 @@ type NewsPageProps = {
 };
 
 export default async function NewsPage({ searchParams }: NewsPageProps) {
-  await requireEditorAccess();
-  const params = await searchParams;
+  await requireEditorAccess({ callbackUrl: "/news" });
+  const [newsItems, params] = await Promise.all([listNewsDrafts(), searchParams]);
   const requestedDate = String(params?.prefillDate ?? "").trim();
   const suggestedDate = isIsoNewsDate(requestedDate)
     ? requestedDate
@@ -32,16 +33,48 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
 
   return (
     <EditorialShell
-      eyebrow="New"
-      title="Create news post"
-      description="Write a new news article with title, date, excerpt, and markdown content."
+      eyebrow="News"
+      title="News posts"
+      description="Select a news post to edit, or create a new one."
     >
-      <NewsEditorForm
-        initialValues={null}
-        suggestedDate={suggestedDate}
-        suggestedSlugSuffix={suggestedSlugSuffix}
-        prefillValues={prefill}
-      />
+      <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
+        <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900">
+          Recent posts
+        </h2>
+        {newsItems.length > 0 ? (
+          <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {newsItems.map((item) => {
+              const [year, ...rest] = item.slug.split("/");
+              const slugTail = rest.join("/");
+              return (
+                <li key={item.slug}>
+                  <Link
+                    href={`/news/${encodeURIComponent(year)}/${encodeURIComponent(slugTail)}`}
+                    className="block rounded-2xl border border-stone-900/10 bg-stone-50 px-5 py-4 transition hover:border-stone-900/25 hover:bg-white"
+                  >
+                    <p className="text-xs text-stone-500">{year}</p>
+                    <p className="mt-0.5 text-sm font-semibold text-stone-900">{slugTail}</p>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="mt-5 text-sm text-stone-500">No news posts found.</p>
+        )}
+      </section>
+
+      <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
+        <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-6">
+          Add new post
+        </h2>
+        <NewsEditorForm
+          initialValues={null}
+          suggestedDate={suggestedDate}
+          suggestedSlugSuffix={suggestedSlugSuffix}
+          prefillValues={prefill}
+        />
+      </section>
     </EditorialShell>
   );
 }

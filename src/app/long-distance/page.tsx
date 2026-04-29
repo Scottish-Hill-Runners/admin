@@ -1,17 +1,47 @@
+import Link from "next/link";
 import { EditorialShell } from "@/components/editorial-shell";
 import { LongDistanceEditorForm } from "@/components/long-distance-editor-form";
+import { listLongDistanceDrafts } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
 
 export default async function LongDistancePage() {
-  await requireEditorAccess();
+  await requireEditorAccess({ callbackUrl: "/long-distance" });
+  const items = await listLongDistanceDrafts();
 
   return (
     <EditorialShell
-      eyebrow="New"
-      title="Create long-distance report"
-      description="Add a new long-distance report with a title and detailed markdown body."
+      eyebrow="Long Distance"
+      title="Long-distance reports"
+      description="Select a report to edit, or create a new one."
     >
-      <LongDistanceEditorForm initialValues={null} />
+      <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
+        <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900">
+          All reports
+        </h2>
+        {items.length > 0 ? (
+          <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {items.map((item) => (
+              <li key={item.slug}>
+                <Link
+                  href={`/long-distance/${encodeURIComponent(item.slug)}`}
+                  className="block rounded-2xl border border-stone-900/10 bg-stone-50 px-5 py-4 text-sm font-semibold text-stone-900 transition hover:border-stone-900/25 hover:bg-white"
+                >
+                  {item.slug}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-5 text-sm text-stone-500">No reports found.</p>
+        )}
+      </section>
+
+      <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
+        <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-6">
+          Add new report
+        </h2>
+        <LongDistanceEditorForm initialValues={null} />
+      </section>
     </EditorialShell>
   );
 }

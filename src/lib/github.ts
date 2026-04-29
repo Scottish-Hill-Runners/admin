@@ -490,7 +490,9 @@ async function getExistingFileSha(
   return undefined;
 }
 
-async function getRepositoryFile(path: string) {
+async function getRepositoryFile(path: string): Promise<string>;
+async function getRepositoryFile(path: string, options: { nullOn404: true }): Promise<string | null>;
+async function getRepositoryFile(path: string, options?: { nullOn404?: boolean }): Promise<string | null> {
   const client = getGitHubClient();
   if (!client) {
     throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
@@ -498,16 +500,25 @@ async function getRepositoryFile(path: string) {
 
   const repo = parseRepoSlug(contentConfig.repo);
   const normalizedPath = normalizeRepoPath(path);
-  const response = await requestGitHubGet<RepositoryDirectoryEntry[] | RepositoryFileEntry>(
-    client,
-    "GET /repos/{owner}/{repo}/contents/{path}",
-    {
-    owner: repo.owner,
-    repo: repo.repo,
-    path: normalizedPath,
-    ref: contentConfig.branch,
+
+  let response: RepositoryDirectoryEntry[] | RepositoryFileEntry;
+  try {
+    response = await requestGitHubGet<RepositoryDirectoryEntry[] | RepositoryFileEntry>(
+      client,
+      "GET /repos/{owner}/{repo}/contents/{path}",
+      {
+        owner: repo.owner,
+        repo: repo.repo,
+        path: normalizedPath,
+        ref: contentConfig.branch,
+      }
+    );
+  } catch (error) {
+    if (options?.nullOn404 && getErrorStatus(error) === 404) {
+      return null;
     }
-  );
+    throw error;
+  }
 
   if (Array.isArray(response) || !("content" in response)) {
     throw new Error(`Expected a file at ${normalizedPath}`);
@@ -796,51 +807,51 @@ export async function getNewsDraft(slug: string): Promise<
     }
   | null
 > {
-  try {
-    const file = await getRepositoryFile(`news/${slug}.md`);
-    const parsed = matter(file);
-    const normalizedDate = normalizeNewsDate(parsed.data.date);
-
-    return {
-      slug,
-      data: {
-        title: String(parsed.data.title ?? ""),
-        date: normalizedDate,
-        excerpt: String(parsed.data.excerpt ?? ""),
-      },
-      content: parsed.content.trim(),
-    };
-  } catch {
+  const file = await getRepositoryFile(`news/${slug}.md`, { nullOn404: true });
+  if (file === null) {
     return null;
   }
+
+  const parsed = matter(file);
+  const normalizedDate = normalizeNewsDate(parsed.data.date);
+
+  return {
+    slug,
+    data: {
+      title: String(parsed.data.title ?? ""),
+      date: normalizedDate,
+      excerpt: String(parsed.data.excerpt ?? ""),
+    },
+    content: parsed.content.trim(),
+  };
 }
 
 export async function getRaceDraft(raceId: string): Promise<RaceInfoFormData | null> {
-  try {
-    const safeRaceId = toSafeRepoPathSegment(raceId);
-    if (!safeRaceId) {
-      return null;
-    }
-
-    const file = await getRepositoryFile(`races/${safeRaceId}/index.md`);
-    const parsed = matter(file);
-
-    return {
-      raceId: safeRaceId,
-      title: String(parsed.data.title ?? ""),
-      venue: String(parsed.data.venue ?? ""),
-      distance: String(parsed.data.distance ?? ""),
-      climb: String(parsed.data.climb ?? ""),
-      maleRecord: String(parsed.data.maleRecord ?? parsed.data.record ?? ""),
-      femaleRecord: String(parsed.data.femaleRecord ?? ""),
-      nonBinaryRecord: String(parsed.data.nonBinaryRecord ?? ""),
-      web: String(parsed.data.web ?? ""),
-      organiser: String(parsed.data.organiser ?? ""),
-      content: parsed.content.trim(),
-    };
-  } catch {
+  const safeRaceId = toSafeRepoPathSegment(raceId);
+  if (!safeRaceId) {
     return null;
   }
+
+  const file = await getRepositoryFile(`races/${safeRaceId}/index.md`, { nullOn404: true });
+  if (file === null) {
+    return null;
+  }
+
+  const parsed = matter(file);
+
+  return {
+    raceId: safeRaceId,
+    title: String(parsed.data.title ?? ""),
+    venue: String(parsed.data.venue ?? ""),
+    distance: String(parsed.data.distance ?? ""),
+    climb: String(parsed.data.climb ?? ""),
+    maleRecord: String(parsed.data.maleRecord ?? parsed.data.record ?? ""),
+    femaleRecord: String(parsed.data.femaleRecord ?? ""),
+    nonBinaryRecord: String(parsed.data.nonBinaryRecord ?? ""),
+    web: String(parsed.data.web ?? ""),
+    organiser: String(parsed.data.organiser ?? ""),
+    content: parsed.content.trim(),
+  };
 }
 
 export async function getRaceResultsDraft(
@@ -854,24 +865,23 @@ export async function getRaceResultsDraft(
     }
   | null
 > {
-  try {
-    const safeRaceId = toSafeRepoPathSegment(raceId);
-    const safeYear = toSafeRepoPathSegment(year);
-    if (!safeRaceId || !safeYear) {
-      return null;
-    }
-
-    const file = await getRepositoryFile(`races/${safeRaceId}/${safeYear}.csv`);
-    const normalizedFile = file.replace(/\r\n?/g, "\n");
-
-    return {
-      raceId: safeRaceId,
-      year: safeYear,
-      csvText: normalizedFile.trim(),
-    };
-  } catch {
+  const safeRaceId = toSafeRepoPathSegment(raceId);
+  const safeYear = toSafeRepoPathSegment(year);
+  if (!safeRaceId || !safeYear) {
     return null;
   }
+
+  const file = await getRepositoryFile(`races/${safeRaceId}/${safeYear}.csv`, { nullOn404: true });
+  if (file === null) {
+    return null;
+  }
+
+  const normalizedFile = file.replace(/\r\n?/g, "\n");
+  return {
+    raceId: safeRaceId,
+    year: safeYear,
+    csvText: normalizedFile.trim(),
+  };
 }
 
 export async function getCalendarDraft(): Promise<
@@ -1066,30 +1076,30 @@ export async function listClubDrafts(): Promise<ClubListItem[]> {
 }
 
 export async function getClubDraft(clubId: string): Promise<ClubInfoFormData | null> {
-  try {
-    const safeClubId = toSafeRepoPathSegment(clubId);
-    if (!safeClubId) {
-      return null;
-    }
-
-    const file = await getRepositoryFile(`clubs/${safeClubId}.md`);
-    const parsed = matter(file);
-
-    const rawAka = parsed.data.aka;
-    const aka: string[] = Array.isArray(rawAka)
-      ? rawAka.map(String).filter(Boolean)
-      : [];
-
-    return {
-      clubId: safeClubId,
-      name: String(parsed.data.name ?? ""),
-      aka,
-      web: String(parsed.data.web ?? ""),
-      content: parsed.content.trim(),
-    };
-  } catch {
+  const safeClubId = toSafeRepoPathSegment(clubId);
+  if (!safeClubId) {
     return null;
   }
+
+  const file = await getRepositoryFile(`clubs/${safeClubId}.md`, { nullOn404: true });
+  if (file === null) {
+    return null;
+  }
+
+  const parsed = matter(file);
+
+  const rawAka = parsed.data.aka;
+  const aka: string[] = Array.isArray(rawAka)
+    ? rawAka.map(String).filter(Boolean)
+    : [];
+
+  return {
+    clubId: safeClubId,
+    name: String(parsed.data.name ?? ""),
+    aka,
+    web: String(parsed.data.web ?? ""),
+    content: parsed.content.trim(),
+  };
 }
 
 export async function listAllClubNameSet(): Promise<Set<string>> {
@@ -1167,23 +1177,23 @@ export async function listLongDistanceDrafts(): Promise<LongDistanceListItem[]> 
 }
 
 export async function getLongDistanceDraft(slug: string): Promise<LongDistanceFormData | null> {
-  try {
-    const safeSlug = toSafeRepoPathSegment(slug);
-    if (!safeSlug) {
-      return null;
-    }
-
-    const file = await getRepositoryFile(`long-distance/${safeSlug}.md`);
-    const parsed = matter(file);
-
-    return {
-      slug: safeSlug,
-      title: String(parsed.data.title ?? ""),
-      content: parsed.content.trim(),
-    };
-  } catch {
+  const safeSlug = toSafeRepoPathSegment(slug);
+  if (!safeSlug) {
     return null;
   }
+
+  const file = await getRepositoryFile(`long-distance/${safeSlug}.md`, { nullOn404: true });
+  if (file === null) {
+    return null;
+  }
+
+  const parsed = matter(file);
+
+  return {
+    slug: safeSlug,
+    title: String(parsed.data.title ?? ""),
+    content: parsed.content.trim(),
+  };
 }
 
 export async function listInfoDrafts(): Promise<InfoListItem[]> {
@@ -1203,21 +1213,20 @@ export async function listInfoDrafts(): Promise<InfoListItem[]> {
 }
 
 export async function getInfoDraft(filePath: string): Promise<InfoFormData | null> {
-  try {
-    const safeFilePath = toSafeRepoRelativeFilePath(filePath);
-    if (!safeFilePath) {
-      return null;
-    }
-
-    const targetPath = `info/${safeFilePath}`;
-    const file = await getRepositoryFile(targetPath);
-
-    return {
-      filePath: safeFilePath,
-      content: file.trim(),
-    };
-  } catch {
+  const safeFilePath = toSafeRepoRelativeFilePath(filePath);
+  if (!safeFilePath) {
     return null;
   }
+
+  const targetPath = `info/${safeFilePath}`;
+  const file = await getRepositoryFile(targetPath, { nullOn404: true });
+  if (file === null) {
+    return null;
+  }
+
+  return {
+    filePath: safeFilePath,
+    content: file.trim(),
+  };
 }
 

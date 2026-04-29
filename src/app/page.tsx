@@ -17,28 +17,14 @@ export default function Home() {
                 href="/news"
                 className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
               >
-                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-700">
-                  Add new
-                </p>
-                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Create a news post
-                </h4>
-                <p className="mt-3 text-base leading-6 text-stone-600">
-                  Write a new news article with title, date, excerpt, and markdown content.
-                </p>
-              </Link>
-              <Link
-                href="/news/edit"
-                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
-              >
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
-                  Edit existing
+                  Browse &amp; manage
                 </p>
                 <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Edit a news post
+                  News posts
                 </h4>
                 <p className="mt-3 text-base leading-6 text-stone-600">
-                  Load an existing news post and update its content or metadata.
+                  Browse recent posts, edit existing articles, or create a new news post.
                 </p>
               </Link>
             </div>
@@ -113,28 +99,14 @@ export default function Home() {
                 href="/races"
                 className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
               >
-                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-700">
-                  Add new
-                </p>
-                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Create new race
-                </h4>
-                <p className="mt-3 text-base leading-6 text-stone-600">
-                  Start a new race page with metadata, route description, and event details.
-                </p>
-              </Link>
-              <Link
-                href="/races/edit"
-                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
-              >
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
-                  Edit existing
+                  Browse &amp; manage
                 </p>
                 <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Edit race details
+                  Race catalogue
                 </h4>
                 <p className="mt-3 text-base leading-6 text-stone-600">
-                  Load an existing race page and update its metadata or route description.
+                  Browse all races, edit metadata and route descriptions, or create a new entry.
                 </p>
               </Link>
             </div>
@@ -164,28 +136,14 @@ export default function Home() {
                 href="/clubs"
                 className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
               >
-                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-700">
-                  Add new
-                </p>
-                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Create new club
-                </h4>
-                <p className="mt-3 text-base leading-6 text-stone-600">
-                  Add a new club entry with its name, aliases, website, and a description.
-                </p>
-              </Link>
-              <Link
-                href="/clubs/edit"
-                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
-              >
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
-                  Edit existing
+                  Browse &amp; manage
                 </p>
                 <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Edit club details
+                  Clubs
                 </h4>
                 <p className="mt-3 text-base leading-6 text-stone-600">
-                  Load an existing club page and update its details or description.
+                  Browse all clubs, edit details and descriptions, or add a new entry.
                 </p>
               </Link>
             </div>
@@ -195,17 +153,17 @@ export default function Home() {
             <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Long Distance</h3>
             <div className="space-y-3">
               <Link
-                href="/long-distance/edit"
+                href="/long-distance"
                 className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
               >
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
-                  Edit existing
+                  Browse &amp; manage
                 </p>
                 <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Edit long-distance report
+                  Long-distance reports
                 </h4>
                 <p className="mt-3 text-base leading-6 text-stone-600">
-                  Load an existing long-distance report and update its content.
+                  Browse reports, edit existing content, or create a new long-distance entry.
                 </p>
               </Link>
             </div>
@@ -215,17 +173,17 @@ export default function Home() {
             <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Info</h3>
             <div className="space-y-3">
               <Link
-                href="/info/edit"
+                href="/info"
                 className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
               >
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
-                  Edit existing
+                  Browse &amp; manage
                 </p>
                 <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Edit info markdown files
+                  Info pages
                 </h4>
                 <p className="mt-3 text-base leading-6 text-stone-600">
-                  Open any markdown file under info/ and edit its content.
+                  Browse info markdown files, edit existing content, or create a new file.
                 </p>
               </Link>
             </div>
