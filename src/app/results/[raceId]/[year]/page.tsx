@@ -2,7 +2,7 @@ import Link from "next/link";
 import { EditorialShell } from "@/components/editorial-shell";
 import { ResultsEditForm } from "@/components/results-edit-form";
 import { ResultsUploadForm } from "@/components/results-upload-form";
-import { getRaceResultsDraft, listAllClubNameSet } from "@/lib/github";
+import { getRaceResultsDraft, listAllClubNameSet, listRaceResultsDrafts } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
 
 type ResultsTerminalPageProps = {
@@ -13,10 +13,13 @@ export default async function ResultsTerminalPage({ params }: ResultsTerminalPag
   const { raceId, year } = await params;
   await requireEditorAccess({ callbackUrl: `/results/${raceId}/${year}` });
 
-  const [existingDraft, clubNameSet] = await Promise.all([
-    getRaceResultsDraft(raceId, year),
+  const [resultsItems, clubNameSet] = await Promise.all([
+    listRaceResultsDrafts(raceId),
     listAllClubNameSet(),
   ]);
+
+  const yearExists = resultsItems.some((item) => item.year === year);
+  const existingDraft = yearExists ? await getRaceResultsDraft(raceId, year) : null;
 
   const knownClubNames = [...clubNameSet];
 

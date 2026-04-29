@@ -15,6 +15,8 @@ export default async function ResultsPage() {
     getCalendarDraft(),
   ]);
 
+  const knownRaceIds = new Set(raceItems.map((item) => item.raceId));
+
   // Find races in the calendar that have passed this year but may lack results
   const calendarRows = calendarDraft ? parseCalendarCsvRows(calendarDraft.csvText) : [];
   const pastThisYearRaceIds = [
@@ -26,9 +28,10 @@ export default async function ResultsPage() {
     ),
   ];
 
-  // Check results in parallel for each past race
+  // Only check results for race IDs that have a known race file — others can't be fetched
+  const knownPastRaceIds = pastThisYearRaceIds.filter((raceId) => knownRaceIds.has(raceId));
   const resultsChecks = await Promise.all(
-    pastThisYearRaceIds.map(async (raceId) => {
+    knownPastRaceIds.map(async (raceId) => {
       const items = await listRaceResultsDrafts(raceId);
       const hasCurrentYear = items.some((item) => item.year === currentYear || item.year.startsWith(`${currentYear}-`));
       return { raceId, hasCurrentYear };
@@ -55,12 +58,21 @@ export default async function ResultsPage() {
           <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {missingResultsRaceIds.map((raceId) => (
               <li key={raceId}>
-                <Link
-                  href={`/results/${encodeURIComponent(raceId)}/${currentYear}`}
-                  className="block rounded-2xl border border-amber-400/50 bg-white px-5 py-4 text-sm font-semibold text-stone-900 transition hover:border-amber-500 hover:bg-amber-50"
-                >
-                  {raceId}
-                </Link>
+                {knownRaceIds.has(raceId) ? (
+                  <Link
+                    href={`/results/${encodeURIComponent(raceId)}/${currentYear}`}
+                    className="block rounded-2xl border border-amber-400/50 bg-white px-5 py-4 text-sm font-semibold text-stone-900 transition hover:border-amber-500 hover:bg-amber-50"
+                  >
+                    {raceId}
+                  </Link>
+                ) : (
+                  <span
+                    className="block rounded-2xl border border-amber-400/30 bg-white/50 px-5 py-4 text-sm font-semibold text-stone-400 cursor-not-allowed"
+                    title="No race file found — add a race first"
+                  >
+                    {raceId}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
