@@ -1132,46 +1132,45 @@ export async function listAllClubNameSet(): Promise<Set<string>> {
 }
 
 export async function listChampionshipDrafts(): Promise<ChampionshipListItem[]> {
-  try {
-    const entries = await getRepositoryDirectory("championships");
-    return entries
-      .filter((entry) => entry.type === "file" && entry.name.endsWith(".md"))
-      .sort((left, right) => left.name.localeCompare(right.name))
-      .map(
-        (entry) =>
-          ({ championshipId: entry.name.replace(/\.md$/, "") }) satisfies ChampionshipListItem
-      );
-  } catch {
+  const entries = await getRepositoryDirectory("championships", { nullOn404: true });
+  if (!entries) {
     return [];
   }
+  return entries
+    .filter((entry) => entry.type === "file" && entry.name.endsWith(".md"))
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map(
+      (entry) =>
+        ({ championshipId: entry.name.replace(/\.md$/, "") }) satisfies ChampionshipListItem
+    );
 }
 
 export async function getChampionshipDraft(
   championshipId: string
 ): Promise<ChampionshipInfoFormData | null> {
-  try {
-    const safeId = toSafeRepoPathSegment(championshipId);
-    if (!safeId) {
-      return null;
-    }
-
-    const file = await getRepositoryFile(`championships/${safeId}.md`);
-    const parsed = matter(file);
-
-    const yearEntries: ChampionshipYearEntry[] = Object.entries(parsed.data)
-      .filter(([key]) => /^\d{4}$/.test(key))
-      .sort(([a], [b]) => b.localeCompare(a))
-      .map(([year, races]) => ({ year, races: String(races ?? "") }));
-
-    return {
-      championshipId: safeId,
-      title: String(parsed.data.title ?? ""),
-      yearEntries,
-      content: parsed.content.trim(),
-    };
-  } catch {
+  const safeId = toSafeRepoPathSegment(championshipId);
+  if (!safeId) {
     return null;
   }
+
+  const file = await getRepositoryFile(`championships/${safeId}.md`, { nullOn404: true });
+  if (!file) {
+    return null;
+  }
+
+  const parsed = matter(file);
+
+  const yearEntries: ChampionshipYearEntry[] = Object.entries(parsed.data)
+    .filter(([key]) => /^\d{4}$/.test(key))
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([year, races]) => ({ year, races: String(races ?? "") }));
+
+  return {
+    championshipId: safeId,
+    title: String(parsed.data.title ?? ""),
+    yearEntries,
+    content: parsed.content.trim(),
+  };
 }
 
 export async function listLongDistanceDrafts(): Promise<LongDistanceListItem[]> {
