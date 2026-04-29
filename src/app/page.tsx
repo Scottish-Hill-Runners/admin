@@ -51,28 +51,14 @@ export default function Home() {
                 href="/results"
                 className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
               >
-                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-700">
-                  Add new
-                </p>
-                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Upload race results
-                </h4>
-                <p className="mt-3 text-base leading-6 text-stone-600">
-                  Import a CSV file with race results, validate, and create a pull request.
-                </p>
-              </Link>
-              <Link
-                href="/results/edit"
-                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
-              >
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
-                  Edit existing
+                  Browse &amp; manage
                 </p>
                 <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Edit race results
+                  Race results
                 </h4>
                 <p className="mt-3 text-base leading-6 text-stone-600">
-                  Load an existing results CSV and update event timings or participant data.
+                  Select a race to upload new results or edit an existing results CSV.
                 </p>
               </Link>
             </div>

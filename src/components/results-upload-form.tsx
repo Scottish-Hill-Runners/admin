@@ -30,6 +30,10 @@ type ResultsUploadFormProps = {
     year: string;
     csvText: string;
   } | null;
+  /** When provided, the race ID is fixed from the URL and the selector is hidden. */
+  fixedRaceId?: string;
+  /** When provided, the year is fixed from the URL and the input is hidden. */
+  fixedYear?: string;
   raceItems?: Array<{ raceId: string }>;
   knownClubNames?: string[];
 };
@@ -93,13 +97,13 @@ function InputField({ label, name, placeholder, defaultValue, errors }: InputPro
   );
 }
 
-export function ResultsUploadForm({ initialValues, raceItems = [], knownClubNames }: ResultsUploadFormProps) {
+export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceItems = [], knownClubNames }: ResultsUploadFormProps) {
   const router = useRouter();
   const [state, formAction, isPending] = useActionState(saveResultsDraft, initialState);
   const buttonLabel = isPending ? "Validating..." : "Create results draft PR";
   const currentYear = new Date().getFullYear().toString();
-  const [raceIdValue, setRaceIdValue] = useState(initialValues?.raceId ?? "");
-  const [yearValue, setYearValue] = useState(initialValues?.year ?? currentYear);
+  const [raceIdValue, setRaceIdValue] = useState(fixedRaceId ?? initialValues?.raceId ?? "");
+  const [yearValue, setYearValue] = useState(fixedYear ?? initialValues?.year ?? currentYear);
   const [csvTextValue, setCsvTextValue] = useState(
     normalizeLineEndings(initialValues?.csvText ?? "")
   );
@@ -180,7 +184,7 @@ export function ResultsUploadForm({ initialValues, raceItems = [], knownClubName
     setSelectedFileName(file.name);
     setCsvTextValue(normalizeLineEndings(text));
 
-    if (!yearValue || yearValue === currentYear.toString()) {
+    if (!fixedYear && (!yearValue || yearValue === currentYear.toString())) {
       const yearFromName = file.name.replace(/\.csv$/i, "");
       setYearValue(yearFromName || currentYear);
     }
@@ -203,36 +207,56 @@ export function ResultsUploadForm({ initialValues, raceItems = [], knownClubName
       <input type="hidden" name="csvText" value={csvTextValue} />
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <div className="grid gap-5">
-          <label className="block space-y-2">
-            <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
-              Race ID
-            </span>
-            <select
-              name="resultsRaceId"
-              value={raceIdValue}
-              onChange={(event) => setRaceIdValue(event.target.value)}
-              className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
-            >
-              <option value="">Select a race...</option>
-              {raceItems.map((item) => (
-                <option key={item.raceId} value={item.raceId}>
-                  {item.raceId}
-                </option>
+          {fixedRaceId ? (
+            <>
+              <input type="hidden" name="resultsRaceId" value={fixedRaceId} />
+              <div className="space-y-2">
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">Race ID</p>
+                <p className="rounded-2xl border border-stone-900/10 bg-stone-100 px-4 py-3 text-base text-stone-900">{fixedRaceId}</p>
+              </div>
+            </>
+          ) : (
+            <label className="block space-y-2">
+              <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
+                Race ID
+              </span>
+              <select
+                name="resultsRaceId"
+                value={raceIdValue}
+                onChange={(event) => setRaceIdValue(event.target.value)}
+                className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
+              >
+                <option value="">Select a race...</option>
+                {raceItems.map((item) => (
+                  <option key={item.raceId} value={item.raceId}>
+                    {item.raceId}
+                  </option>
+                ))}
+              </select>
+              {state.fieldErrors?.raceId?.map((error) => (
+                <p key={error} className="text-sm text-red-700">
+                  {error}
+                </p>
               ))}
-            </select>
-            {state.fieldErrors?.raceId?.map((error) => (
-              <p key={error} className="text-sm text-red-700">
-                {error}
-              </p>
-            ))}
-          </label>
-          <InputField
-            label="Results filename"
-            name="resultsYear"
-            placeholder={currentYear}
-            defaultValue={initialValues?.year}
-            errors={state.fieldErrors?.year}
-          />
+            </label>
+          )}
+          {fixedYear ? (
+            <>
+              <input type="hidden" name="resultsYear" value={fixedYear} />
+              <div className="space-y-2">
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">Year</p>
+                <p className="rounded-2xl border border-stone-900/10 bg-stone-100 px-4 py-3 text-base text-stone-900">{fixedYear}</p>
+              </div>
+            </>
+          ) : (
+            <InputField
+              label="Results filename"
+              name="resultsYear"
+              placeholder={currentYear}
+              defaultValue={initialValues?.year}
+              errors={state.fieldErrors?.year}
+            />
+          )}
           <label className="block space-y-2">
             <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
               CSV file
