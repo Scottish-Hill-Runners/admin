@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { EditorialShell } from "@/components/editorial-shell";
+import { RaceSearchList } from "@/components/race-search-list";
 import { getCalendarDraft, listRaceDrafts, listRaceResultsDrafts } from "@/lib/github";
 import { parseCalendarCsvRows } from "@/lib/calendar-csv";
 import { requireEditorAccess } from "@/lib/route-protection";
@@ -86,22 +87,12 @@ export default async function ResultsPage() {
         <p className="mt-3 text-sm leading-6 text-stone-600">
           Select a race to manage its results files.
         </p>
-        {raceItems.length > 0 ? (
-          <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {raceItems.map((item) => (
-              <li key={item.raceId}>
-                <Link
-                  href={`/results/${encodeURIComponent(item.raceId)}`}
-                  className="block rounded-2xl border border-stone-900/10 bg-stone-50 px-5 py-4 text-sm font-semibold text-stone-900 transition hover:border-stone-900/25 hover:bg-white"
-                >
-                  {item.raceId}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-5 text-sm text-stone-500">No races found.</p>
-        )}
+        <div className="mt-5">
+          <RaceSearchList
+            raceItems={raceItems}
+            hrefPrefix="/results"
+          />
+        </div>
       </section>
     </EditorialShell>
   );

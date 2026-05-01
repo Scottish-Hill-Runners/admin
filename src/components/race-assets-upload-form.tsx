@@ -18,6 +18,7 @@ type RaceItem = { raceId: string };
 
 type RaceAssetsUploadFormProps = {
   raceItems?: RaceItem[];
+  fixedRaceId?: string;
 };
 
 type GpxInfo = {
@@ -188,13 +189,13 @@ function FileIcon() {
 
 const initialState: RaceAssetsActionState = { status: "idle" };
 
-export function RaceAssetsUploadForm({ raceItems = [] }: RaceAssetsUploadFormProps) {
+export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssetsUploadFormProps) {
   const [state, formAction, isPending] = useActionState(
     uploadRaceAssets,
     initialState,
   );
 
-  const [raceId, setRaceId] = useState("");
+  const [raceId, setRaceId] = useState(fixedRaceId ?? "");
   const [epsilon, setEpsilon] = useState(DEFAULT_EPSILON);
   const [gpxInfo, setGpxInfo] = useState<GpxInfo | null>(null);
   const [imageInfo, setImageInfo] = useState<ImageInfo | null>(null);
@@ -252,59 +253,71 @@ export function RaceAssetsUploadForm({ raceItems = [] }: RaceAssetsUploadFormPro
         </p>
 
         <div className="mt-5 space-y-2">
-          {raceItems.length > 0 ? (
+          {fixedRaceId ? (
             <>
+              <input type="hidden" name="raceId" value={fixedRaceId} />
+              <p className="text-sm font-semibold text-stone-800">Race ID</p>
+              <p className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700 max-w-xs">
+                {fixedRaceId}
+              </p>
+            </>
+          ) : (
+            <>
+              {raceItems.length > 0 ? (
+                <>
+                  <label
+                    htmlFor="raceId-select"
+                    className="block text-sm font-semibold text-stone-800"
+                  >
+                    Race ID
+                  </label>
+                  <select
+                    id="raceId-select"
+                    name="raceId"
+                    value={raceId}
+                    onChange={(e) => setRaceId(e.target.value)}
+                    required
+                    className="w-full max-w-xs rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+                  >
+                    <option value="">— choose a race —</option>
+                    {raceItems.map((r) => (
+                      <option key={r.raceId} value={r.raceId}>
+                        {r.raceId}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-stone-400 pt-1">
+                    Or enter a new ID directly:
+                  </p>
+                </>
+              ) : null}
+
               <label
-                htmlFor="raceId-select"
-                className="block text-sm font-semibold text-stone-800"
+                htmlFor="raceId-input"
+                className={[
+                  "block text-sm font-semibold text-stone-800",
+                  raceItems.length > 0 ? "sr-only" : "",
+                ].join(" ")}
               >
                 Race ID
               </label>
-              <select
-                id="raceId-select"
-                name="raceId"
+              <input
+                id="raceId-input"
+                type="text"
+                name={raceItems.length > 0 ? "_raceIdFreeText" : "raceId"}
                 value={raceId}
                 onChange={(e) => setRaceId(e.target.value)}
-                required
-                className="w-full max-w-xs rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
-              >
-                <option value="">— choose a race —</option>
-                {raceItems.map((r) => (
-                  <option key={r.raceId} value={r.raceId}>
-                    {r.raceId}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-stone-400 pt-1">
-                Or enter a new ID directly:
-              </p>
+                placeholder="e.g. ben-nevis"
+                pattern="[A-Za-z0-9\-]{2,80}"
+                title="2–80 characters: letters, numbers, and hyphens only"
+                className="w-full max-w-xs rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 shadow-sm placeholder:text-stone-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
+              />
+              {raceItems.length > 0 && raceId ? (
+                // Hidden field used when user types a free-text ID alongside the select
+                <input type="hidden" name="raceId" value={raceId} />
+              ) : null}
             </>
-          ) : null}
-
-          <label
-            htmlFor="raceId-input"
-            className={[
-              "block text-sm font-semibold text-stone-800",
-              raceItems.length > 0 ? "sr-only" : "",
-            ].join(" ")}
-          >
-            Race ID
-          </label>
-          <input
-            id="raceId-input"
-            type="text"
-            name={raceItems.length > 0 ? "_raceIdFreeText" : "raceId"}
-            value={raceId}
-            onChange={(e) => setRaceId(e.target.value)}
-            placeholder="e.g. ben-nevis"
-            pattern="[A-Za-z0-9\-]{2,80}"
-            title="2–80 characters: letters, numbers, and hyphens only"
-            className="w-full max-w-xs rounded-xl border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 shadow-sm placeholder:text-stone-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200"
-          />
-          {raceItems.length > 0 && raceId ? (
-            // Hidden field used when user types a free-text ID alongside the select
-            <input type="hidden" name="raceId" value={raceId} />
-          ) : null}
+          )}
         </div>
       </section>
 
