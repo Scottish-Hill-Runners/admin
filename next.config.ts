@@ -1,8 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   reactCompiler: true,
+  experimental: {
+    serverActions: {
+      // Allow up to 12 MB to accommodate map image + GPX uploads
+      bodySizeLimit: "12mb",
+    },
+  },
 };
 
 export default nextConfig;
