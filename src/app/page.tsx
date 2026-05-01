@@ -189,6 +189,28 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        <section className="grid gap-5 lg:grid-cols-2">
+          <div>
+            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Publish</h3>
+            <div className="space-y-3">
+              <Link
+                href="/publish"
+                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
+              >
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
+                  Deploy changes
+                </p>
+                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
+                  Publish staged content
+                </h4>
+                <p className="mt-3 text-base leading-6 text-stone-600">
+                  Open a single staging → main PR so officials can approve and deploy all accumulated changes in one step.
+                </p>
+              </Link>
+            </div>
+          </div>
+        </section>
       </div>
     </EditorialShell>
   );

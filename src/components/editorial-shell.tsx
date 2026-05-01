@@ -42,7 +42,7 @@ export async function EditorialShell({
             <div className="rounded-[1.25rem] border border-stone-900/10 bg-white/80 px-4 py-3 text-sm text-stone-700">
               <p className="font-semibold text-stone-900">Content target</p>
               <p>{contentConfig.repo}</p>
-              <p>Branch: {contentConfig.branch}</p>
+              <p>Staging: {contentConfig.stagingBranch} → {contentConfig.branch}</p>
             </div>
           </div>
 
@@ -107,6 +107,12 @@ export async function EditorialShell({
                 className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
               >
                 Info
+              </Link>
+              <Link
+                href="/publish"
+                className="rounded-full border border-amber-700/30 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 transition hover:bg-amber-100"
+              >
+                Publish
               </Link>
               {identity ? (
                 <p className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900">

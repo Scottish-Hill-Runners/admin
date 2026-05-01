@@ -44,6 +44,7 @@ type CreateContentPrInput = {
   prBody: string;
   branchName: string;
   author?: ContentPrAuthor;
+  labels?: string[];
 };
 
 type CreateContentPrFileInput = {
@@ -61,6 +62,7 @@ type CreateContentPrWithFilesInput = {
   prBody: string;
   branchName: string;
   author?: ContentPrAuthor;
+  labels?: string[];
 };
 
 type RepositoryDirectoryEntry = {
@@ -942,6 +944,159 @@ export async function listRaceResultsDrafts(raceId: string): Promise<RaceResultL
     .sort((left, right) => right.year.localeCompare(left.year));
 }
 
+async function ensureStagingBranch(client: Octokit, repo: RepoRef): Promise<string> {
+  const stagingBranch = contentConfig.stagingBranch;
+
+  try {
+    await requestGitHubGet<{ object: { sha: string } }>(
+      client,
+      "GET /repos/{owner}/{repo}/git/ref/{ref}",
+      { owner: repo.owner, repo: repo.repo, ref: `heads/${stagingBranch}` }
+    );
+    return stagingBranch;
+  } catch (error) {
+    if (getErrorStatus(error) !== 404) {
+      throw error;
+    }
+  }
+
+  // Staging branch does not exist yet — create it from the live branch.
+  const liveSha = await getDefaultBranchSha(client, repo, contentConfig.branch);
+  await client.git.createRef({
+    owner: repo.owner,
+    repo: repo.repo,
+    ref: `refs/heads/${stagingBranch}`,
+    sha: liveSha,
+  });
+
+  return stagingBranch;
+}
+
+export type StagingStatus =
+  | { state: "up-to-date" }
+  | { state: "ahead"; aheadBy: number; behindBy: number; prUrl: string | null }
+  | { state: "error"; message: string };
+
+export async function getStagingStatus(): Promise<StagingStatus> {
+  const client = getGitHubClient();
+  if (!client) {
+    return { state: "error", message: "GitHub credentials are not configured." };
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+
+  let comparison: { ahead_by: number; behind_by: number };
+  try {
+    comparison = await requestGitHubGet<{ ahead_by: number; behind_by: number }>(
+      client,
+      "GET /repos/{owner}/{repo}/compare/{base}...{head}",
+      {
+        owner: repo.owner,
+        repo: repo.repo,
+        base: contentConfig.branch,
+        head: contentConfig.stagingBranch,
+      }
+    );
+  } catch (error) {
+    if (getErrorStatus(error) === 404) {
+      return { state: "up-to-date" };
+    }
+    return { state: "error", message: "Could not compare staging with live branch." };
+  }
+
+  if (comparison.ahead_by === 0) {
+    return { state: "up-to-date" };
+  }
+
+  // Check for an existing open staging → live PR.
+  let prUrl: string | null = null;
+  try {
+    const existingPrs = await requestGitHubGet<Array<{ number: number; html_url: string; head: { ref: string }; base: { ref: string } }>>(
+      client,
+      "GET /repos/{owner}/{repo}/pulls",
+      {
+        owner: repo.owner,
+        repo: repo.repo,
+        state: "open",
+        head: `${repo.owner}:${contentConfig.stagingBranch}`,
+        base: contentConfig.branch,
+        per_page: 1,
+      }
+    );
+    if (existingPrs.length > 0) {
+      prUrl = existingPrs[0].html_url;
+    }
+  } catch {
+    // Best-effort — we can still show the status without the PR URL.
+  }
+
+  return {
+    state: "ahead",
+    aheadBy: comparison.ahead_by,
+    behindBy: comparison.behind_by,
+    prUrl,
+  };
+}
+
+export async function publishStagingToLive(author?: { name: string; email: string }): Promise<{
+  prNumber: number;
+  prUrl: string;
+  alreadyExists: boolean;
+}> {
+  const client = getGitHubClient();
+  if (!client) {
+    throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+
+  // Return an existing open PR if one already exists.
+  const existingPrs = await requestGitHubGet<Array<{ number: number; html_url: string }>>(
+    client,
+    "GET /repos/{owner}/{repo}/pulls",
+    {
+      owner: repo.owner,
+      repo: repo.repo,
+      state: "open",
+      head: `${repo.owner}:${contentConfig.stagingBranch}`,
+      base: contentConfig.branch,
+      per_page: 1,
+    }
+  );
+
+  if (existingPrs.length > 0) {
+    return {
+      prNumber: existingPrs[0].number,
+      prUrl: existingPrs[0].html_url,
+      alreadyExists: true,
+    };
+  }
+
+  const prBody = [
+    `Publish staged content to live (\`${contentConfig.stagingBranch}\` → \`${contentConfig.branch}\`).`,
+    "",
+    `- Content repo: ${contentConfig.repo}`,
+    author ? `- Requested by: ${author.name} <${author.email}>` : null,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+
+  const pullRequest = await client.pulls.create({
+    owner: repo.owner,
+    repo: repo.repo,
+    title: `Publish staged content to live`,
+    body: prBody,
+    head: contentConfig.stagingBranch,
+    base: contentConfig.branch,
+  });
+
+  return {
+    prNumber: pullRequest.data.number,
+    prUrl: pullRequest.data.html_url,
+    alreadyExists: false,
+  };
+}
+
 export async function createContentPullRequest({
   title,
   path,
@@ -951,6 +1106,7 @@ export async function createContentPullRequest({
   prBody,
   branchName,
   author,
+  labels,
 }: CreateContentPrInput) {
   const client = getGitHubClient();
   if (!client) {
@@ -959,7 +1115,7 @@ export async function createContentPullRequest({
 
   const repo = parseRepoSlug(contentConfig.repo);
   const normalizedPath = normalizeRepoPath(path);
-  const baseBranch = contentConfig.branch;
+  const baseBranch = await ensureStagingBranch(client, repo);
   const baseSha = await getDefaultBranchSha(client, repo, baseBranch);
 
   await client.git.createRef({
@@ -995,6 +1151,19 @@ export async function createContentPullRequest({
     base: baseBranch,
   });
 
+  if (labels && labels.length > 0) {
+    try {
+      await client.issues.addLabels({
+        owner: repo.owner,
+        repo: repo.repo,
+        issue_number: pullRequest.data.number,
+        labels,
+      });
+    } catch {
+      // Label application is best-effort; the PR was created successfully.
+    }
+  }
+
   return {
     title,
     path,
@@ -1012,6 +1181,7 @@ export async function createContentPullRequestWithFiles({
   prBody,
   branchName,
   author,
+  labels,
 }: CreateContentPrWithFilesInput) {
   if (files.length === 0) {
     throw new Error("At least one file is required to create a pull request.");
@@ -1023,7 +1193,7 @@ export async function createContentPullRequestWithFiles({
   }
 
   const repo = parseRepoSlug(contentConfig.repo);
-  const baseBranch = contentConfig.branch;
+  const baseBranch = await ensureStagingBranch(client, repo);
   const baseSha = await getDefaultBranchSha(client, repo, baseBranch);
 
   await client.git.createRef({
@@ -1063,6 +1233,19 @@ export async function createContentPullRequestWithFiles({
     head: branchName,
     base: baseBranch,
   });
+
+  if (labels && labels.length > 0) {
+    try {
+      await client.issues.addLabels({
+        owner: repo.owner,
+        repo: repo.repo,
+        issue_number: pullRequest.data.number,
+        labels,
+      });
+    } catch {
+      // Label application is best-effort; the PR was created successfully.
+    }
+  }
 
   return {
     title,

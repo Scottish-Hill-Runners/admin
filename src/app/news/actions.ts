@@ -107,6 +107,8 @@ export async function saveNewsDraft(
   const didAutoAssignSuffix = !requestedSuffix && effectiveSuffix.length > 0;
 
   try {
+    const autoMerge = formData.get("autoMerge") === "on";
+
     const result = await createContentPullRequest({
       title: values.title,
       path: filePath,
@@ -120,6 +122,7 @@ export async function saveNewsDraft(
         `- Date: ${values.date}`,
       branchName: `shr-admin/news-${year}-${slug}`,
       author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
     });
 
     return {

@@ -51,6 +51,8 @@ export async function saveClubDraft(
   const values = parsed.data;
 
   try {
+    const autoMerge = formData.get("autoMerge") === "on";
+
     const result = await createContentPullRequest({
       title: values.name,
       path: `clubs/${values.clubId}.md`,
@@ -64,6 +66,7 @@ export async function saveClubDraft(
         `- Name: ${values.name}`,
       branchName: `shr-admin/club-${values.clubId}`,
       author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
     });
 
     return {

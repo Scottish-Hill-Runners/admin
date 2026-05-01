@@ -55,6 +55,8 @@ export async function saveCalendarDraft(
   }
 
   try {
+    const autoMerge = formData.get("autoMerge") === "on";
+
     const result = await createContentPullRequest({
       title: "Calendar update",
       path: "calendar.csv",
@@ -68,6 +70,7 @@ export async function saveCalendarDraft(
         `- Validation warnings: ${issues.filter((issue) => issue.level === "warning").length}`,
       branchName: `shr-admin/calendar-${Date.now()}`,
       author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
     });
 
     return {

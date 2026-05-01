@@ -42,6 +42,8 @@ export async function saveLongDistanceDraft(
   const values = parsed.data;
 
   try {
+    const autoMerge = formData.get("autoMerge") === "on";
+
     const result = await createContentPullRequest({
       title: values.title,
       path: `long-distance/${values.slug}.md`,
@@ -55,6 +57,7 @@ export async function saveLongDistanceDraft(
         `- Title: ${values.title}`,
       branchName: `shr-admin/long-distance-${values.slug}`,
       author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
     });
 
     return {

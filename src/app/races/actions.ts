@@ -59,6 +59,8 @@ export async function saveRaceDraft(
   const author = buildPrAuthor(editorSession);
 
   try {
+    const autoMerge = formData.get("autoMerge") === "on";
+
     const result = await createContentPullRequest({
       title: values.title,
       path: `races/${values.raceId}/index.md`,
@@ -72,6 +74,7 @@ export async function saveRaceDraft(
         `- Venue: ${values.venue}`,
       branchName: `shr-admin/race-${values.raceId}`,
       author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
     });
 
     return {

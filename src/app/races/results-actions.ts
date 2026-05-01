@@ -191,6 +191,8 @@ export async function saveResultsDraft(
             ),
           ].join("\n");
 
+    const autoMerge = formData.get("autoMerge") === "on";
+
     const result = await createContentPullRequest({
       title: `${values.raceId} ${values.year} results`,
       path: `races/${values.raceId}/${values.year}.csv`,
@@ -204,6 +206,7 @@ export async function saveResultsDraft(
         warningsSection,
       branchName: `shr-admin/results-${values.raceId.toLowerCase()}-${values.year.toLowerCase()}`,
       author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
     });
 
     return {

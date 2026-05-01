@@ -227,6 +227,7 @@ export async function uploadPicturesDraft(
     const editorSession = await getEditorSession();
     const author = buildPrAuthor(editorSession);
     const branchName = `shr-admin/blobs-${Date.now()}`;
+    const autoMerge = formData.get("autoMerge") === "on";
     const result = await createContentPullRequestWithFiles({
       title: `Pictures upload (${files.length} files)`,
       files,
@@ -239,6 +240,7 @@ export async function uploadPicturesDraft(
         "- Target folder: blobs/",
       branchName,
       author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
     });
 
     return {
@@ -444,6 +446,7 @@ export async function saveCollectionsYamlDraft(
     const targetSummary = `race ${values.raceSlug} (${heroCount} hero, ${galleryCount} gallery)`;
 
     try {
+      const autoMerge = formData.get("autoMerge") === "on";
       const result = await createContentPullRequest({
         title: "Update collections.yaml",
         path: "collections.yaml",
@@ -458,6 +461,7 @@ export async function saveCollectionsYamlDraft(
           "- Validated sections: collections, raceImageConfig, raceImagesBySlug",
         branchName: `shr-admin/collections-yaml-${Date.now()}`,
         author,
+        labels: autoMerge ? ["auto-merge"] : undefined,
       });
 
       return {
@@ -567,6 +571,7 @@ export async function saveCollectionsYamlDraft(
   const targetSummary = values.targetSection;
 
   try {
+    const autoMerge = formData.get("autoMerge") === "on";
     const result = await createContentPullRequest({
       title: "Update collections.yaml",
       path: "collections.yaml",
@@ -581,6 +586,7 @@ export async function saveCollectionsYamlDraft(
         "- Validated sections: collections, raceImageConfig, raceImagesBySlug",
       branchName: `shr-admin/collections-yaml-${Date.now()}`,
       author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
     });
 
     return {

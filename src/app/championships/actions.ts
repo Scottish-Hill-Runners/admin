@@ -50,6 +50,8 @@ export async function saveChampionshipDraft(
   const values = parsed.data;
 
   try {
+    const autoMerge = formData.get("autoMerge") === "on";
+
     const result = await createContentPullRequest({
       title: values.title,
       path: `championships/${values.championshipId}.md`,
@@ -63,6 +65,7 @@ export async function saveChampionshipDraft(
         `- Title: ${values.title}`,
       branchName: `shr-admin/championship-${values.championshipId}`,
       author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
     });
 
     return {

@@ -165,13 +165,19 @@ export function RaceEditorForm({ initialValues }: RaceEditorFormProps) {
               {state.message ?? "Nothing submitted yet."}
             </p>
           </div>
-          <button
-            type="submit"
-            disabled={isPending}
-            className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500"
-          >
-            {isPending ? "Creating PR..." : "Create race draft PR"}
-          </button>
+          <div className="flex flex-col items-end gap-3">
+            <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
+              <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
+              Minor correction — auto-merge
+            </label>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500"
+            >
+              {isPending ? "Creating PR..." : "Create race draft PR"}
+            </button>
+          </div>
         </div>
       </section>
     </form>

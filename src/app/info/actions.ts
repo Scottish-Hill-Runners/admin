@@ -50,6 +50,8 @@ export async function saveInfoDraft(
   const branchSuffix = toBranchSuffix(values.filePath);
 
   try {
+    const autoMerge = formData.get("autoMerge") === "on";
+
     const result = await createContentPullRequest({
       title: values.filePath,
       path: targetPath,
@@ -62,6 +64,7 @@ export async function saveInfoDraft(
         `- Path: ${targetPath}`,
       branchName: `shr-admin/info-${branchSuffix}`,
       author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
     });
 
     return {

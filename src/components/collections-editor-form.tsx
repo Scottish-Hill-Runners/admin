@@ -240,13 +240,19 @@ export function CollectionsEditorForm({
               {uploadState.message ??
                 "Accepted formats: JPG, PNG, WEBP, GIF. Max 20 files, 10MB each."}
             </p>
-            <button
-              type="submit"
-              disabled={uploadPending}
-              className="rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-400"
-            >
-              {uploadButtonLabel}
-            </button>
+            <div className="flex flex-col items-end gap-3">
+              <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-600">
+                <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-stone-700" />
+                Minor correction — auto-merge
+              </label>
+              <button
+                type="submit"
+                disabled={uploadPending}
+                className="rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-400"
+              >
+                {uploadButtonLabel}
+              </button>
+            </div>
           </div>
         </form>
       </section>
@@ -493,13 +499,19 @@ export function CollectionsEditorForm({
               {yamlState.message ??
                 "Validation checks full collections.yaml structure before opening a pull request."}
             </p>
-            <button
-              type="submit"
-              disabled={yamlPending}
-              className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500"
-            >
-              {yamlButtonLabel}
-            </button>
+            <div className="flex flex-col items-end gap-3">
+              <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
+                <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
+                Minor correction — auto-merge
+              </label>
+              <button
+                type="submit"
+                disabled={yamlPending}
+                className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500"
+              >
+                {yamlButtonLabel}
+              </button>
+            </div>
           </div>
         </form>
       </section>
