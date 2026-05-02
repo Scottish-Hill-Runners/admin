@@ -15,7 +15,7 @@ export default async function CalendarPage() {
     <EditorialShell
       eyebrow="Edit"
       title="Edit race calendar"
-      description="Manage calendar.csv entries in yyyy-mm-dd,RaceID format and create a draft pull request."
+      description="Manage calendar.csv entries in yyyy-mm-dd,RaceID format and save a draft for review."
     >
       <CalendarEditForm
         initialCsvText={calendarDraft?.csvText ?? ""}

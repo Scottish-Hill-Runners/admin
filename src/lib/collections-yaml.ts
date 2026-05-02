@@ -1,13 +1,25 @@
 import { parseDocument, stringify } from "yaml";
 import {
-  collectionsYamlSchema,
-  type CollectionsYamlValues,
+  committeePortraitsYamlSchema,
+  documentsManifestYamlSchema,
+  homepageImagesYamlSchema,
+  raceImagesYamlSchema,
+  type CommitteePortraitsYamlValues,
+  type DocumentsManifestYamlValues,
+  type HomepageImagesYamlValues,
+  type RaceImagesYamlValues,
 } from "@/lib/collections-schema";
 
-export function parseAndValidateCollectionsYaml(yamlText: string): {
-  data?: CollectionsYamlValues;
+type ParseYamlResult<T> = {
+  data?: T;
   error?: string;
-} {
+};
+
+function parseAndValidateYamlDocument<T>(
+  yamlText: string,
+  schema: { safeParse: (value: unknown) => { success: true; data: T } | { success: false; error: { issues: Array<{ message: string }> } } },
+  invalidMessage: string
+): ParseYamlResult<T> {
   const document = parseDocument(yamlText);
 
   if (document.errors.length > 0) {
@@ -17,53 +29,69 @@ export function parseAndValidateCollectionsYaml(yamlText: string): {
   }
 
   const parsed = document.toJS();
-  const validated = collectionsYamlSchema.safeParse(parsed);
+  const validated = schema.safeParse(parsed);
   if (!validated.success) {
     const [firstIssue] = validated.error.issues;
 
     return {
-      error: firstIssue?.message ?? "collections.yaml is invalid.",
+      error: firstIssue?.message ?? invalidMessage,
     };
   }
 
   return { data: validated.data };
 }
 
-export function stringifyCollectionsYaml(data: CollectionsYamlValues): string {
+function stringifyYamlDocument(data: unknown): string {
   return stringify(data, {
     lineWidth: 0,
     defaultStringType: "QUOTE_DOUBLE",
   }).trimEnd() + "\n";
 }
 
-export type CollectionsEditorOption = {
-  value: string;
-  label: string;
-};
+export function parseAndValidateHomepageImagesYaml(yamlText: string): ParseYamlResult<HomepageImagesYamlValues> {
+  return parseAndValidateYamlDocument(
+    yamlText,
+    homepageImagesYamlSchema,
+    "homepage/images.yaml is invalid."
+  );
+}
 
-export function getCollectionsEditorOptions(data: CollectionsYamlValues): {
-  collectionOptions: CollectionsEditorOption[];
-  raceOptions: CollectionsEditorOption[];
-} {
-  const preferredCollectionIds = [
-    "homepage-decorative",
-    "committee-portraits",
-  ];
+export function stringifyHomepageImagesYaml(data: HomepageImagesYamlValues): string {
+  return stringifyYamlDocument(data);
+}
 
-  const collectionMap = new Map(data.collections.map((item) => [item.id, item.label]));
-  const collectionOptions = preferredCollectionIds
-    .filter((collectionId) => collectionMap.has(collectionId))
-    .map((collectionId) => ({
-      value: collectionId,
-      label: collectionMap.get(collectionId) ?? collectionId,
-    }));
+export function parseAndValidateDocumentsManifestYaml(yamlText: string): ParseYamlResult<DocumentsManifestYamlValues> {
+  return parseAndValidateYamlDocument(
+    yamlText,
+    documentsManifestYamlSchema,
+    "documents/manifest.yaml is invalid."
+  );
+}
 
-  const raceOptions = Object.keys(data.raceImagesBySlug)
-    .sort((left, right) => left.localeCompare(right))
-    .map((slug) => ({ value: slug, label: slug }));
+export function stringifyDocumentsManifestYaml(data: DocumentsManifestYamlValues): string {
+  return stringifyYamlDocument(data);
+}
 
-  return {
-    collectionOptions,
-    raceOptions,
-  };
+export function parseAndValidateCommitteePortraitsYaml(yamlText: string): ParseYamlResult<CommitteePortraitsYamlValues> {
+  return parseAndValidateYamlDocument(
+    yamlText,
+    committeePortraitsYamlSchema,
+    "committee/portraits.yaml is invalid."
+  );
+}
+
+export function stringifyCommitteePortraitsYaml(data: CommitteePortraitsYamlValues): string {
+  return stringifyYamlDocument(data);
+}
+
+export function parseAndValidateRaceImagesYaml(yamlText: string): ParseYamlResult<RaceImagesYamlValues> {
+  return parseAndValidateYamlDocument(
+    yamlText,
+    raceImagesYamlSchema,
+    "races/<raceId>/images.yaml is invalid."
+  );
+}
+
+export function stringifyRaceImagesYaml(data: RaceImagesYamlValues): string {
+  return stringifyYamlDocument(data);
 }

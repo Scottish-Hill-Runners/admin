@@ -100,7 +100,7 @@ function InputField({ label, name, placeholder, defaultValue, errors }: InputPro
 export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceItems = [], knownClubNames }: ResultsUploadFormProps) {
   const router = useRouter();
   const [state, formAction, isPending] = useActionState(saveResultsDraft, initialState);
-  const buttonLabel = isPending ? "Validating..." : "Create results draft PR";
+  const buttonLabel = isPending ? "Checking..." : "Save results draft";
   const currentYear = new Date().getFullYear().toString();
   const [raceIdValue, setRaceIdValue] = useState(fixedRaceId ?? initialValues?.raceId ?? "");
   const [yearValue, setYearValue] = useState(fixedYear ?? initialValues?.year ?? currentYear);
@@ -270,12 +270,12 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
             <p className="text-sm leading-6 text-stone-600">
               {selectedFileName
                 ? `Loaded file: ${selectedFileName}`
-                : "Upload a CSV file to populate the preview and validation checks."}
+                : "Upload a CSV file to populate the preview and checks."}
             </p>
           </label>
           <p className="text-sm leading-6 text-stone-600">
-            The uploaded CSV is written exactly to `races/&lt;raceId&gt;/&lt;year&gt;.csv`.
-            Use the preview and validation panels to confirm content before creating a draft PR.
+            The uploaded CSV is saved as `races/&lt;raceId&gt;/&lt;year&gt;.csv`.
+            Use the preview and checks to confirm content before submitting a draft.
           </p>
           <label className="flex items-start gap-3 rounded-xl border border-stone-900/10 bg-stone-50 px-4 py-3">
             <input
@@ -286,7 +286,7 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
               className="mt-1 size-4 rounded border-stone-400 text-stone-900 focus:ring-stone-500"
             />
             <span className="text-sm leading-6 text-stone-700">
-              After creating the results PR, open a prefilled news draft template with winners (manual review and submit).
+              After saving results, open a prefilled news draft template with winners (manual review and submit).
             </span>
           </label>
           {state.fieldErrors?.csvText?.map((error) => (
@@ -306,17 +306,17 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
             Target path: <span className="font-semibold text-white">races/{raceIdValue || "<race>"}/{yearValue || "<year>"}.csv</span>
           </p>
           <p className="text-sm leading-6 text-stone-300">
-            Validation: header checks, time format checks, and runner category checks
+            Checks: header checks, time format checks, and runner category checks
           </p>
           <p className="text-sm leading-6 text-stone-300">
-            File format: raw CSV written directly to the content repository
+            File format: raw CSV saved directly to the content store
           </p>
         </div>
         <div className="mt-6 space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-                Validation status
+                Check status
               </p>
               <p className="mt-2 text-sm leading-6 text-stone-200">
                 {state.message ?? "Nothing submitted yet."}
@@ -325,7 +325,7 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
             <div className="flex flex-col items-end gap-3">
               <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
                 <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
-                Minor correction — auto-merge
+                Minor correction — publish automatically
               </label>
               <button
                 type="submit"
@@ -338,7 +338,7 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
           </div>
           {blockingErrorsExist ? (
             <p className="text-sm leading-6 text-red-200">
-              Fix live blocking errors before creating a draft PR.
+              Fix blocking errors before saving this draft.
             </p>
           ) : null}
 

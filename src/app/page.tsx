@@ -6,7 +6,7 @@ export default function Home() {
     <EditorialShell
       eyebrow="Scottish Hill Runners"
       title="Editorial control for race results, descriptions, and news"
-      description="This admin app is the safe editing surface for non-technical community editors. It will validate content, prepare clean pull requests, and keep GitHub out of the day-to-day workflow."
+      description="This admin app is the safe editing surface for non-technical community editors. It checks content, prepares clean drafts for review, and keeps technical details out of the day-to-day workflow."
     >
       <div className="grid gap-8">
         <section className="grid gap-5 lg:grid-cols-2">
@@ -53,20 +53,20 @@ export default function Home() {
 
         <section className="grid gap-5 lg:grid-cols-2">
           <div>
-            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Collections</h3>
+            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Assets</h3>
             <div className="space-y-3">
               <Link
                 href="/collections"
                 className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
               >
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
-                  Manage images
+                  Manage assets
                 </p>
                 <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Upload pictures and edit collections
+                  Images and documents
                 </h4>
                 <p className="mt-3 text-base leading-6 text-stone-600">
-                  Upload image assets to blobs/ and update collections.yaml in a validated PR.
+                  Open specialist editors for homepage images, committee portraits, and document lists.
                 </p>
               </Link>
             </div>
@@ -86,7 +86,7 @@ export default function Home() {
                   Edit calendar.csv
                 </h4>
                 <p className="mt-3 text-base leading-6 text-stone-600">
-                  Manage race dates in yyyy-mm-dd,RaceID format and create a pull request draft.
+                  Manage race dates in yyyy-mm-dd,RaceID format and save a draft for review.
                 </p>
               </Link>
             </div>
@@ -202,10 +202,10 @@ export default function Home() {
                   Deploy changes
                 </p>
                 <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Publish staged content
+                  Publish draft updates
                 </h4>
                 <p className="mt-3 text-base leading-6 text-stone-600">
-                  Open a single staging → main PR so officials can approve and deploy all accumulated changes in one step.
+                  Submit one publication request so officials can approve and deploy all accumulated updates in one step.
                 </p>
               </Link>
             </div>

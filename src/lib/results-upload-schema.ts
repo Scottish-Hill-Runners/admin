@@ -8,7 +8,7 @@ export const resultsUploadSchema = z.object({
   year: z
     .string()
     .regex(/^\d{4}(?:\*|-[A-Za-z0-9]+)?$/, "Year filename must look like YYYY or YYYY-suffix."),
-  csvText: z.string().min(10, "Paste CSV data before creating a draft PR."),
+  csvText: z.string().min(10, "Paste CSV data before saving a draft."),
 });
 
 export type ResultsUploadValues = z.infer<typeof resultsUploadSchema>;

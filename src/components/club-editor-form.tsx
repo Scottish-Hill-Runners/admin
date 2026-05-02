@@ -102,10 +102,10 @@ export function ClubEditorForm({ initialValues }: ClubEditorFormProps) {
             <span className="font-semibold text-white">clubs/{clubIdValue}.md</span>
           </p>
           <p className="text-sm leading-6 text-stone-300">
-            Frontmatter fields: name, aka, web
+            Saved fields: name, aka, web
           </p>
           <p className="text-sm leading-6 text-stone-300">
-            Body format: markdown club description
+            Body format: club description text formatting
           </p>
         </div>
         <MarkdownEditorField
@@ -129,14 +129,14 @@ export function ClubEditorForm({ initialValues }: ClubEditorFormProps) {
           <div className="flex flex-col items-end gap-3">
             <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
               <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
-              Minor correction — auto-merge
+              Minor correction — publish automatically
             </label>
             <button
               type="submit"
               disabled={isPending}
               className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500"
             >
-              {isPending ? "Creating PR..." : "Save club draft PR"}
+              {isPending ? "Saving..." : "Save club draft"}
             </button>
           </div>
         </div>

@@ -97,7 +97,7 @@ export function NewsEditorForm({
 }: NewsEditorFormProps) {
   const [state, formAction, isPending] = useActionState(saveNewsDraft, initialState);
   const [isResuggesting, startResuggesting] = useTransition();
-  const buttonLabel = isPending ? "Creating PR..." : "Create draft PR";
+  const buttonLabel = isPending ? "Saving..." : "Save draft";
   const formId = useId();
   const initialDateValue = initialValues?.data.date ?? suggestedDate ?? "";
   const initialSuffixValue = initialValues
@@ -159,7 +159,7 @@ export function NewsEditorForm({
             errors={state.fieldErrors?.date}
           />
           <InputField
-            label="Slug suffix (optional)"
+            label="URL ending (optional)"
             name="slugSuffix"
             placeholder="(set this to 1, 2 etc. if there is another post for the same date)"
             defaultValue={initialSuffixValue}
@@ -172,10 +172,10 @@ export function NewsEditorForm({
           />
           {!initialValues ? (
             <div className="space-y-1 text-sm leading-6 text-stone-600">
-              <p>Suggested suffix is based on existing news files plus open pull request drafts.</p>
+              <p>Suggested ending is based on existing news files plus pending drafts.</p>
               {prefillValues?.fromResults ? (
                 <p className="text-amber-700">
-                  Template generated from race results. Review and adjust before creating the news PR.
+                  Template generated from race results. Review and adjust before submitting the news draft.
                 </p>
               ) : null}
               <p>{isResuggesting ? "Refreshing suffix suggestion for this date..." : ""}</p>
@@ -213,10 +213,10 @@ export function NewsEditorForm({
           <input type="hidden" name="slug" value={slugValue} readOnly />
           <input type="hidden" name="originalSlug" value={initialValues?.slug ?? ""} readOnly />
           <p className="text-sm leading-6 text-stone-300">
-            Frontmatter fields: title, date, excerpt
+            Saved fields: title, date, excerpt
           </p>
           <p className="text-sm leading-6 text-stone-300">
-            Body format: markdown article content
+            Body format: article text formatting
           </p>
         </div>
         <MarkdownEditorField
@@ -231,7 +231,7 @@ export function NewsEditorForm({
         <div className="mt-6 flex items-center justify-between gap-4">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-              Validation status
+              Check status
             </p>
             <p className="mt-2 text-sm leading-6 text-stone-200">
               {state.message ?? "Nothing submitted yet."}
@@ -240,7 +240,7 @@ export function NewsEditorForm({
           <div className="flex flex-col items-end gap-3">
             <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
               <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
-              Minor correction — auto-merge
+              Minor correction — publish automatically
             </label>
             <button
               type="submit"

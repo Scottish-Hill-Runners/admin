@@ -1,46 +1,52 @@
 import { z } from "zod";
 
-const picturePathSchema = z
+const blobPathSchema = z
   .string()
-  .min(1, "Image path is required.")
-  .startsWith("blobs/", "Image paths must start with blobs/.");
+  .min(1, "Blob path is required.")
+  .startsWith("blobs/", "Paths must start with blobs/.");
 
-const collectionItemSchema = z.object({
-  path: picturePathSchema,
+const tagSchema = z.string().min(1, "Tags cannot be empty.");
+
+const imageAssetItemSchema = z.object({
+  path: blobPathSchema,
   tier: z.string().min(1, "Tier is required."),
-  tags: z.array(z.string().min(1, "Tags cannot be empty.")).min(1, "At least one tag is required."),
+  tags: z.array(tagSchema).min(1, "At least one tag is required."),
 });
 
-const collectionSchema = z.object({
-  id: z.string().min(1, "Collection id is required."),
-  label: z.string().min(1, "Collection label is required."),
-  usage: z.array(z.string().min(1)).default([]),
-  doNotUseFor: z.array(z.string().min(1)).default([]),
-  items: z.array(collectionItemSchema),
+const documentAssetItemSchema = z.object({
+  path: blobPathSchema,
+  tier: z.string().min(1, "Tier is required."),
+  tags: z.array(tagSchema).min(1, "At least one tag is required."),
+  title: z.string().min(1, "Title is required."),
+  description: z.string().min(1, "Description is required."),
 });
 
-const raceImageReferenceSchema = z.object({
-  path: picturePathSchema,
-  confidence: z.string().min(1, "Confidence is required."),
-  source: z.string().min(1, "Source is required."),
+const raceImageItemSchema = z.object({
+  path: blobPathSchema,
 });
 
-const raceImagesBySlugEntrySchema = z.object({
-  hero: z.array(raceImageReferenceSchema).max(1, "A race can only have one hero image."),
-  gallery: z.array(raceImageReferenceSchema),
+export const homepageImagesYamlSchema = z.object({
+  images: z.array(imageAssetItemSchema),
 });
 
-export const collectionsYamlSchema = z.object({
-  version: z.number().int(),
-  collections: z.array(collectionSchema),
-  raceImageConfig: z
-    .object({
-      defaultCollectionId: z.string().min(1),
-      includeSidebarVariants: z.boolean(),
-      notes: z.array(z.string().min(1)).default([]),
-    })
-    .catchall(z.any()),
-  raceImagesBySlug: z.record(z.string(), raceImagesBySlugEntrySchema),
+export const documentsManifestYamlSchema = z.object({
+  documents: z.array(documentAssetItemSchema),
 });
 
-export type CollectionsYamlValues = z.infer<typeof collectionsYamlSchema>;
+export const committeePortraitsYamlSchema = z.object({
+  portraits: z.array(imageAssetItemSchema),
+});
+
+export const raceImagesYamlSchema = z.object({
+  hero: z.array(raceImageItemSchema).max(1, "A race can only have one hero image."),
+  gallery: z.array(raceImageItemSchema),
+});
+
+export type HomepageImagesYamlValues = z.infer<typeof homepageImagesYamlSchema>;
+export type DocumentsManifestYamlValues = z.infer<typeof documentsManifestYamlSchema>;
+export type CommitteePortraitsYamlValues = z.infer<typeof committeePortraitsYamlSchema>;
+export type RaceImagesYamlValues = z.infer<typeof raceImagesYamlSchema>;
+
+export type ImageAssetItem = z.infer<typeof imageAssetItemSchema>;
+export type DocumentAssetItem = z.infer<typeof documentAssetItemSchema>;
+export { blobPathSchema };

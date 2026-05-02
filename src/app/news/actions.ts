@@ -128,8 +128,8 @@ export async function saveNewsDraft(
     return {
       status: "success",
       message: didAutoAssignSuffix
-        ? `Opened PR #${result.prNumber}: ${result.prUrl} (suffix auto-set to ${effectiveSuffix})`
-        : `Opened PR #${result.prNumber}: ${result.prUrl}`,
+        ? `Saved draft #${result.prNumber}: ${result.prUrl} (ending auto-set to ${effectiveSuffix})`
+        : `Saved draft #${result.prNumber}: ${result.prUrl}`,
     };
   } catch (error) {
     return {
@@ -137,7 +137,7 @@ export async function saveNewsDraft(
       message:
         error instanceof Error
           ? error.message
-          : "Failed to create the GitHub pull request.",
+          : "Failed to save this draft.",
     };
   }
 }

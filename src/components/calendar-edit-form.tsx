@@ -157,7 +157,7 @@ export function CalendarEditForm({
             Target path: <span className="font-semibold text-white">calendar.csv</span>
           </p>
           <p className="text-sm leading-6 text-stone-300">
-            Validation: date format, race ID format, duplicates, and unknown race warnings
+            Checks: date format, race ID format, duplicates, and unknown race warnings
           </p>
         </div>
 
@@ -165,7 +165,7 @@ export function CalendarEditForm({
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-                Validation status
+                Check status
               </p>
               <p className="mt-2 text-sm leading-6 text-stone-200">
                 {state.message ?? "Nothing submitted yet."}
@@ -174,7 +174,7 @@ export function CalendarEditForm({
             <div className="flex flex-col items-end gap-3">
               <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
                 <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
-                Minor correction — auto-merge
+                Minor correction — publish automatically
               </label>
               <button
                 type="submit"

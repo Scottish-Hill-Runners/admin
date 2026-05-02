@@ -42,7 +42,7 @@ export async function EditorialShell({
             <div className="rounded-[1.25rem] border border-stone-900/10 bg-white/80 px-4 py-3 text-sm text-stone-700">
               <p className="font-semibold text-stone-900">Content target</p>
               <p>{contentConfig.repo}</p>
-              <p>Staging: {contentConfig.stagingBranch} → {contentConfig.branch}</p>
+              <p>Draft updates: {contentConfig.stagingBranch} → {contentConfig.branch}</p>
             </div>
           </div>
 
@@ -65,12 +65,6 @@ export async function EditorialShell({
                 className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
               >
                 Races
-              </Link>
-              <Link
-                href="/race-assets"
-                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
-              >
-                Race Assets
               </Link>
               <Link
                 href="/results"
@@ -100,7 +94,7 @@ export async function EditorialShell({
                 href="/collections"
                 className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
               >
-                Collections
+                Assets
               </Link>
               <Link
                 href="/long-distance"

@@ -12,7 +12,7 @@ export default async function InfoPage() {
     <EditorialShell
       eyebrow="Info"
       title="Info pages"
-      description="Select a markdown file to edit, or create a new one."
+      description="Select a page file to edit, or create a new one."
     >
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900">

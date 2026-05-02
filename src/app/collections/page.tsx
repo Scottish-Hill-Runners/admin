@@ -1,50 +1,62 @@
-import { CollectionsEditorForm } from "@/components/collections-editor-form";
+import Link from "next/link";
 import { EditorialShell } from "@/components/editorial-shell";
-import { getCollectionsYamlDraft } from "@/lib/github";
-import {
-  getCollectionsEditorOptions,
-  parseAndValidateCollectionsYaml,
-} from "@/lib/collections-yaml";
 import { requireEditorAccess } from "@/lib/route-protection";
 
 export default async function CollectionsPage() {
   await requireEditorAccess();
 
-  const yamlText = await getCollectionsYamlDraft();
-  const fallbackCollections = [
-    { value: "homepage-decorative-draft", label: "Homepage decorative draft" },
-    { value: "committee-portraits-draft", label: "Committee portraits draft" },
-  ];
-
-  let collectionOptions = fallbackCollections;
-  let raceOptions: Array<{ value: string; label: string }> = [];
-  let loadError: string | null = null;
-
-  if (!yamlText) {
-    loadError = "Could not load collections.yaml from the content repository.";
-  } else {
-    const parsed = parseAndValidateCollectionsYaml(yamlText);
-    if (!parsed.data) {
-      loadError = "Could not parse collections.yaml. Showing limited fallback options.";
-    } else {
-      const options = getCollectionsEditorOptions(parsed.data);
-      collectionOptions =
-        options.collectionOptions.length > 0 ? options.collectionOptions : fallbackCollections;
-      raceOptions = options.raceOptions;
-    }
-  }
-
   return (
     <EditorialShell
-      eyebrow="Images"
-      title="Upload pictures and edit collections.yaml"
-      description="Upload one or more images to blobs/ and register them in collections.yaml in a validated PR workflow."
+      eyebrow="Assets"
+      title="Manage image and document lists"
+      description="Choose an editor for homepage images, documents, or committee portraits. Race image galleries are managed from each race page."
     >
-      <CollectionsEditorForm
-        collectionOptions={collectionOptions}
-        raceOptions={raceOptions}
-        loadError={loadError}
-      />
+      <section className="grid gap-5 md:grid-cols-3">
+        <Link
+          href="/collections/homepage"
+          className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/20 hover:bg-white"
+        >
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
+            Homepage
+          </p>
+          <h2 className="mt-2 font-[family:var(--font-heading)] text-2xl text-stone-900">
+            Homepage images
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-stone-600">
+            Upload to blobs/homepage and add decorative images to the homepage list.
+          </p>
+        </Link>
+
+        <Link
+          href="/collections/documents"
+          className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/20 hover:bg-white"
+        >
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
+            Documents
+          </p>
+          <h2 className="mt-2 font-[family:var(--font-heading)] text-2xl text-stone-900">
+            Document list
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-stone-600">
+            Upload PDFs, DOCX files, and other assets to blobs/documents and add them to the document list.
+          </p>
+        </Link>
+
+        <Link
+          href="/collections/committee"
+          className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/20 hover:bg-white"
+        >
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
+            Committee
+          </p>
+          <h2 className="mt-2 font-[family:var(--font-heading)] text-2xl text-stone-900">
+            Committee portraits
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-stone-600">
+            Upload portraits to blobs/portraits and add them to the committee portrait list.
+          </p>
+        </Link>
+      </section>
     </EditorialShell>
   );
 }

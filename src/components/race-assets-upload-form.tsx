@@ -248,8 +248,8 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
           Race
         </h2>
         <p className="mt-1 text-sm text-stone-500">
-          Files will be committed to <code>races/&lt;id&gt;/</code> in the
-          content repository.
+          Files will be saved to <code>races/&lt;id&gt;/</code> in the
+          content store.
         </p>
 
         <div className="mt-5 space-y-2">
@@ -442,9 +442,7 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
             className="mt-0.5 h-4 w-4 rounded accent-amber-600"
           />
           <span className="text-sm text-stone-700">
-            <span className="font-semibold">Auto-merge</span> — add the{" "}
-            <code>auto-merge</code> label to the PR so it merges automatically
-            once checks pass.
+            <span className="font-semibold">Publish automatically</span> — marks this upload so it can go live automatically once checks pass.
           </span>
         </label>
       </section>
@@ -463,7 +461,7 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
               rel="noreferrer"
               className="mt-2 inline-block font-medium text-green-800 underline underline-offset-2"
             >
-              View PR #{state.prNumber} on GitHub →
+              View submission #{state.prNumber} →
             </a>
           )}
         </div>
@@ -482,7 +480,7 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
           disabled={isPending || !raceId.trim() || !hasFiles}
           className="rounded-full bg-amber-700 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {isPending ? "Uploading…" : "Upload to GitHub"}
+          {isPending ? "Uploading…" : "Upload and save"}
         </button>
         {!raceId.trim() && (
           <p className="text-xs text-stone-400">Enter a race ID to continue.</p>

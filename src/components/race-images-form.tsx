@@ -4,19 +4,20 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useActionState } from "react";
 import {
-  saveCollectionsYamlDraft,
-  uploadPicturesDraft,
-  type CollectionsYamlState,
-  type UploadPicturesState,
+  saveRaceImagesDraft,
+  uploadRaceImagesDraft,
+  type AssetMetadataState,
+  type UploadAssetsState,
 } from "@/app/collections/actions";
 
 type RaceImagesFormProps = {
   fixedRaceSlug: string;
   raceExists: boolean;
+  currentImageCount?: number;
 };
 
-const initialUploadState: UploadPicturesState = { status: "idle" };
-const initialYamlState: CollectionsYamlState = { status: "idle" };
+const initialUploadState: UploadAssetsState = { status: "idle" };
+const initialYamlState: AssetMetadataState = { status: "idle" };
 
 type SelectedImagePreview = { name: string; url: string };
 
@@ -55,13 +56,14 @@ function toUniquePaths(paths: string[]): string[] {
 export function RaceImagesForm({
   fixedRaceSlug,
   raceExists,
+  currentImageCount,
 }: RaceImagesFormProps) {
   const [uploadState, uploadAction, uploadPending] = useActionState(
-    uploadPicturesDraft,
+    uploadRaceImagesDraft,
     initialUploadState,
   );
   const [yamlState, yamlAction, yamlPending] = useActionState(
-    saveCollectionsYamlDraft,
+    saveRaceImagesDraft,
     initialYamlState,
   );
   const [selectedFileNames, setSelectedFileNames] = useState<string[]>([]);
@@ -102,8 +104,8 @@ export function RaceImagesForm({
       selectedFileNames
         .map(toSafePictureFilename)
         .filter((v): v is string => !!v)
-        .map((name) => `blobs/${name}`),
-    [selectedFileNames],
+        .map((name) => `blobs/races/${fixedRaceSlug}/${name}`),
+    [fixedRaceSlug, selectedFileNames],
   );
 
   const raceImagePaths = useMemo(
@@ -127,12 +129,13 @@ export function RaceImagesForm({
           Upload images
         </h2>
         <p className="mt-1 mb-5 text-sm text-stone-500">
-          Select one or more images to add to{" "}
-          <code>blobs/</code> in the content repository. Accepted formats: JPG,
-          PNG, WEBP, GIF. Max 20 files, 10 MB each.
+          Select one or more images to add to <code>{`blobs/races/${fixedRaceSlug}/`}</code>
+          in the content store. Accepted formats: JPG, PNG, WEBP, GIF. Max 20 files,
+          10 MB each.
         </p>
 
         <form action={uploadAction} className="grid gap-4">
+          <input type="hidden" name="raceId" value={fixedRaceSlug} />
           <label className="block space-y-2">
             <span className="text-sm font-semibold text-stone-800">
               Image files
@@ -178,7 +181,7 @@ export function RaceImagesForm({
             </div>
           ) : null}
 
-          {uploadState.fieldErrors?.imageFiles?.map((error) => (
+          {uploadState.fieldErrors?.assetFiles?.map((error) => (
             <p key={error} className="text-sm text-red-700">
               {error}
             </p>
@@ -197,45 +200,46 @@ export function RaceImagesForm({
                   name="autoMerge"
                   className="h-4 w-4 accent-stone-700"
                 />
-                Auto-merge
+                Publish automatically
               </label>
               <button
                 type="submit"
                 disabled={uploadPending}
                 className="rounded-full bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {uploadPending ? "Uploading…" : "Create upload PR"}
+                {uploadPending ? "Uploading…" : "Upload and save"}
               </button>
             </div>
           </div>
         </form>
       </section>
 
-      {/* ── Register in collections.yaml ─────────────────── */}
+      {/* ── Register in races/<raceId>/images.yaml ───────── */}
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-[#172119] p-6 text-stone-50 shadow-[0_22px_55px_rgba(23,33,25,0.24)]">
         <h2 className="font-[family:var(--font-heading)] text-xl text-stone-50">
-          Register in collections.yaml
+          Update image list
         </h2>
         <p className="mt-1 mb-5 text-sm text-stone-300">
-          Add the uploaded image paths to the{" "}
-          <code className="text-lime-200">{fixedRaceSlug}</code> race entry in
-          collections.yaml. Use the paths shown above after uploading, or enter
-          them manually.
+          Add the uploaded image paths to the race image list.
+          Use the paths shown above after uploading, or enter them manually.
         </p>
+
+        {typeof currentImageCount === "number" ? (
+          <p className="mb-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-stone-200">
+            Current images registered: {currentImageCount}
+          </p>
+        ) : null}
 
         {!raceExists ? (
           <p className="mb-4 rounded-2xl border border-amber-400/30 bg-amber-900/20 px-4 py-3 text-sm text-amber-200">
             <strong>{fixedRaceSlug}</strong> does not have a race file in the
-            content repository yet. Create the race metadata first before
+            content store yet. Create the race details first before
             registering images.
           </p>
         ) : null}
 
         <form action={yamlAction} className="grid gap-4">
-          {/* Fixed hidden fields — target + race are already known */}
-          <input type="hidden" name="targetSection" value="race" />
-          <input type="hidden" name="raceSlug" value={fixedRaceSlug} />
-          <input type="hidden" name="imagePath" value="" />
+          <input type="hidden" name="raceId" value={fixedRaceSlug} />
 
           <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-lime-200/70 mb-1">
@@ -252,7 +256,7 @@ export function RaceImagesForm({
               value={manualRaceImagePaths}
               onChange={(e) => setManualRaceImagePaths(e.target.value)}
               rows={4}
-              placeholder="Add paths, one per line, e.g. blobs/race-day-1.jpg"
+              placeholder={`Add paths, one per line, e.g. blobs/races/${fixedRaceSlug}/summit-shot.jpg`}
               className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
             />
           </label>
@@ -262,7 +266,19 @@ export function RaceImagesForm({
               <p className="font-semibold text-lime-100">From selected uploads</p>
               <ul className="mt-2 space-y-1">
                 {uploadedImagePaths.map((path) => (
-                  <li key={path}>{path}</li>
+                  <li key={path}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setManualRaceImagePaths((current) =>
+                          current.length > 0 ? `${current}\n${path}` : path
+                        )
+                      }
+                      className="text-left hover:text-lime-100 hover:underline underline-offset-4"
+                    >
+                      {path}
+                    </button>
+                  </li>
                 ))}
               </ul>
             </div>
@@ -306,30 +322,6 @@ export function RaceImagesForm({
             </select>
           </label>
 
-          <label className="block space-y-2">
-            <span className="text-sm font-semibold uppercase tracking-[0.14em] text-lime-200/80">
-              Confidence{" "}
-              <span className="font-normal text-stone-400">(optional)</span>
-            </span>
-            <input
-              name="confidence"
-              placeholder="high (default)"
-              className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
-            />
-          </label>
-
-          <label className="block space-y-2">
-            <span className="text-sm font-semibold uppercase tracking-[0.14em] text-lime-200/80">
-              Source{" "}
-              <span className="font-normal text-stone-400">(optional)</span>
-            </span>
-            <input
-              name="source"
-              placeholder="Defaults to your name/email"
-              className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
-            />
-          </label>
-
           {yamlState.fieldErrors?.imagePaths?.map((error) => (
             <p key={error} className="text-sm text-red-300">
               {error}
@@ -340,7 +332,7 @@ export function RaceImagesForm({
               {error}
             </p>
           ))}
-          {yamlState.fieldErrors?.raceSlug?.map((error) => (
+          {yamlState.fieldErrors?.raceId?.map((error) => (
             <p key={error} className="text-sm text-red-300">
               {error}
             </p>
@@ -350,7 +342,7 @@ export function RaceImagesForm({
             <p className="text-sm leading-6 text-stone-300">
               {yamlState.status === "success" || yamlState.status === "error"
                 ? yamlState.message
-                : "Validation checks full collections.yaml structure before opening a pull request."}
+                : "Checks run before this image list update is submitted."}
             </p>
             <div className="flex flex-col items-end gap-3">
               <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-400">
@@ -359,14 +351,14 @@ export function RaceImagesForm({
                   name="autoMerge"
                   className="h-4 w-4 accent-lime-500"
                 />
-                Auto-merge
+                Publish automatically
               </label>
               <button
                 type="submit"
                 disabled={yamlPending || !raceExists || raceImagePaths.length === 0}
                 className="rounded-full bg-lime-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-lime-800 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {yamlPending ? "Saving…" : "Create collections.yaml PR"}
+                {yamlPending ? "Saving…" : "Save image list"}
               </button>
             </div>
           </div>

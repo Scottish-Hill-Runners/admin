@@ -62,7 +62,7 @@ export async function saveLongDistanceDraft(
 
     return {
       status: "success",
-      message: `Opened PR #${result.prNumber}: ${result.prUrl}`,
+      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
     };
   } catch (error) {
     return {
@@ -70,7 +70,7 @@ export async function saveLongDistanceDraft(
       message:
         error instanceof Error
           ? error.message
-          : "Failed to create the GitHub pull request.",
+          : "Failed to save this draft.",
     };
   }
 }

@@ -49,7 +49,7 @@ export async function saveCalendarDraft(
   if (blockingIssues.length > 0) {
     return {
       status: "error",
-      message: "CSV validation failed. Fix blocking issues before creating a draft PR.",
+      message: "CSV checks failed. Fix blocking issues before saving this draft.",
       issues: issueMessages,
     };
   }
@@ -75,7 +75,7 @@ export async function saveCalendarDraft(
 
     return {
       status: "success",
-      message: `Opened PR #${result.prNumber}: ${result.prUrl}`,
+      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
       issues: issueMessages,
     };
   } catch (error) {
@@ -84,7 +84,7 @@ export async function saveCalendarDraft(
       message:
         error instanceof Error
           ? error.message
-          : "Failed to create the GitHub pull request.",
+          : "Failed to save this draft.",
       issues: issueMessages.length > 0 ? issueMessages : [initialMessage],
     };
   }

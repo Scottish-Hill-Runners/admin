@@ -90,14 +90,14 @@ export function ChampionshipEditorForm({ championshipId, initialValues }: Champi
             </span>
           </p>
           <p className="text-sm leading-6 text-stone-300">
-            Frontmatter: title + existing race schedule preserved unchanged
+            Saved fields: title + existing race schedule preserved unchanged
           </p>
         </div>
         <MarkdownEditorField
           id={`${formId}-content`}
           name="content"
           label="Championship description"
-          placeholder="Overview, rules, schedule, past winners, and contact details in markdown."
+          placeholder="Overview, rules, schedule, past winners, and contact details in plain text formatting."
           defaultValue={initialValues?.content}
           errors={state.fieldErrors?.content}
         />
@@ -114,14 +114,14 @@ export function ChampionshipEditorForm({ championshipId, initialValues }: Champi
           <div className="flex flex-col items-end gap-3">
             <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
               <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
-              Minor correction — auto-merge
+              Minor correction — publish automatically
             </label>
             <button
               type="submit"
               disabled={isPending}
               className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500"
             >
-              {isPending ? "Creating PR..." : "Save championship draft PR"}
+              {isPending ? "Saving..." : "Save championship draft"}
             </button>
           </div>
         </div>

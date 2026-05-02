@@ -915,9 +915,50 @@ export async function getCalendarDraft(): Promise<
   }
 }
 
-export async function getCollectionsYamlDraft(): Promise<string | null> {
+export async function getHomepageImagesDraft(): Promise<string | null> {
   try {
-    return await getRepositoryFile("collections.yaml");
+    return await getRepositoryFile("homepage/images.yaml", { nullOn404: true });
+  } catch {
+    return null;
+  }
+}
+
+export async function getDocumentsManifestDraft(): Promise<string | null> {
+  try {
+    return await getRepositoryFile("documents/manifest.yaml", { nullOn404: true });
+  } catch {
+    return null;
+  }
+}
+
+export async function getCommitteePortraitsDraft(): Promise<string | null> {
+  try {
+    return await getRepositoryFile("committee/portraits.yaml", { nullOn404: true });
+  } catch {
+    return null;
+  }
+}
+
+export async function getRaceImagesDraft(raceId: string): Promise<string | null> {
+  const safeRaceId = toSafeRepoPathSegment(raceId);
+  if (!safeRaceId) {
+    return null;
+  }
+
+  const entries = await getRepositoryDirectory(`races/${safeRaceId}`, { nullOn404: true });
+  if (!entries) {
+    return null;
+  }
+
+  const imagesEntry = entries.find(
+    (entry) => entry.type === "file" && entry.name === "images.yaml"
+  );
+  if (!imagesEntry) {
+    return null;
+  }
+
+  try {
+    return await getRepositoryFile(imagesEntry.path, { nullOn404: true });
   } catch {
     return null;
   }
@@ -980,7 +1021,7 @@ export type StagingStatus =
 export async function getStagingStatus(): Promise<StagingStatus> {
   const client = getGitHubClient();
   if (!client) {
-    return { state: "error", message: "GitHub credentials are not configured." };
+    return { state: "error", message: "Publishing is not set up yet. Please contact an administrator." };
   }
 
   const repo = parseRepoSlug(contentConfig.repo);
@@ -1001,7 +1042,7 @@ export async function getStagingStatus(): Promise<StagingStatus> {
     if (getErrorStatus(error) === 404) {
       return { state: "up-to-date" };
     }
-    return { state: "error", message: "Could not compare staging with live branch." };
+    return { state: "error", message: "Could not check publishing status right now." };
   }
 
   if (comparison.ahead_by === 0) {

@@ -39,7 +39,7 @@ export async function publishStagingAction(
       message:
         error instanceof Error
           ? error.message
-          : "Failed to create the publish pull request.",
+          : "Failed to submit the publication request.",
     };
   }
 }

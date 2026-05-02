@@ -2,20 +2,29 @@
 
 import { z } from "zod";
 import { contentConfig } from "@/lib/content-config";
+import { buildPrAuthor, getEditorSession } from "@/lib/auth-session";
 import {
   createContentPullRequest,
   createContentPullRequestWithFiles,
-  getCollectionsYamlDraft,
+  getCommitteePortraitsDraft,
+  getDocumentsManifestDraft,
+  getHomepageImagesDraft,
+  getRaceImagesDraft,
 } from "@/lib/github";
 import {
-  parseAndValidateCollectionsYaml,
-  stringifyCollectionsYaml,
+  parseAndValidateCommitteePortraitsYaml,
+  parseAndValidateDocumentsManifestYaml,
+  parseAndValidateHomepageImagesYaml,
+  parseAndValidateRaceImagesYaml,
+  stringifyCommitteePortraitsYaml,
+  stringifyDocumentsManifestYaml,
+  stringifyHomepageImagesYaml,
+  stringifyRaceImagesYaml,
 } from "@/lib/collections-yaml";
-import { getEditorSession, buildPrAuthor } from "@/lib/auth-session";
 import { requireEditorAccess } from "@/lib/route-protection";
 
-const MAX_IMAGE_FILES = 20;
-const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_UPLOAD_FILES = 20;
+const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
 const allowedImageMimeTypes = new Set([
   "image/jpeg",
   "image/png",
@@ -24,58 +33,70 @@ const allowedImageMimeTypes = new Set([
 ]);
 const allowedImageExtensions = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
 
-const targetSectionSchema = z.enum([
-  "homepage-decorative-draft",
-  "homepage-decorative",
-  "committee-portraits-draft",
-  "committee-portraits",
-  "race",
-]);
+const assetPathSchema = z
+  .string()
+  .trim()
+  .min(1, "Path is required.")
+  .startsWith("blobs/", "Paths must start with blobs/.");
 
-const collectionsSectionUpdateSchema = z.object({
-  targetSection: targetSectionSchema,
-  imagePath: z.string().trim().optional(),
-  imagePaths: z.string().trim().optional(),
-  heroImagePath: z.string().trim().optional(),
-  tier: z.string().trim().optional(),
-  tags: z.string().trim().optional(),
-  raceSlug: z.string().trim().optional(),
-  confidence: z.string().trim().optional(),
-  source: z.string().trim().optional(),
+const imageManifestEntrySchema = z.object({
+  path: assetPathSchema,
+  tier: z.string().trim().min(1, "Tier is required."),
+  tags: z.string().trim().min(1, "Add at least one tag."),
 });
 
-export type UploadPicturesState = {
+const documentManifestEntrySchema = imageManifestEntrySchema.extend({
+  title: z.string().trim().min(1, "Title is required."),
+  description: z.string().trim().min(1, "Description is required."),
+});
+
+const raceImagesUpdateSchema = z.object({
+  raceId: z.string().trim().min(1, "Race is required."),
+  imagePaths: z.string().trim().optional(),
+  heroImagePath: z.string().trim().optional(),
+});
+
+export type UploadAssetsState = {
   status: "idle" | "success" | "error";
   message?: string;
   fieldErrors?: {
-    imageFiles?: string[];
+    assetFiles?: string[];
   };
 };
 
-export type CollectionsYamlState = {
+export type AssetMetadataState = {
   status: "idle" | "success" | "error";
   message?: string;
   fieldErrors?: {
-    targetSection?: string[];
-    imagePath?: string[];
-    imagePaths?: string[];
-    heroImagePath?: string[];
+    path?: string[];
     tier?: string[];
     tags?: string[];
-    raceSlug?: string[];
-    confidence?: string[];
-    source?: string[];
+    title?: string[];
+    description?: string[];
+    raceId?: string[];
+    imagePaths?: string[];
+    heroImagePath?: string[];
   };
 };
 
-function splitImagePaths(value: string): string[] {
+type UploadMode = "image" | "any";
+
+type UploadOptions = {
+  targetFolder: string;
+  branchPrefix: string;
+  contentLabel: string;
+  fileLabel: string;
+  mode: UploadMode;
+};
+
+function splitPaths(value: string): string[] {
   return value
     .split(/[\n,]/)
     .map((path) => path.trim())
     .filter((path) => path.length > 0);
 }
 
-function toUniqueImagePaths(paths: string[]): string[] {
+function toUniquePaths(paths: string[]): string[] {
   const unique: string[] = [];
   const seen = new Set<string>();
 
@@ -91,31 +112,25 @@ function toUniqueImagePaths(paths: string[]): string[] {
   return unique;
 }
 
-function toDefaultSource(args: {
-  name: string | null;
-  email: string | null;
-  login: string | null;
-}): string {
-  if (args.name && args.email) {
-    return `${args.name} <${args.email}>`;
-  }
-
-  if (args.email) {
-    return args.email;
-  }
-
-  if (args.name) {
-    return args.name;
-  }
-
-  if (args.login) {
-    return args.login;
-  }
-
-  return "shr-admin";
+function parseTags(value: string): string[] {
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0);
 }
 
-function toSafePictureFilename(originalName: string): string | null {
+function toSafeBranchSegment(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^[-.]+/, "")
+      .replace(/[-.]+$/, "") || "update"
+  );
+}
+
+function toSafeUploadFilename(originalName: string, mode: UploadMode): string | null {
   const trimmed = String(originalName).trim();
   const extensionSeparator = trimmed.lastIndexOf(".");
   if (extensionSeparator <= 0 || extensionSeparator === trimmed.length - 1) {
@@ -123,8 +138,16 @@ function toSafePictureFilename(originalName: string): string | null {
   }
 
   const rawBase = trimmed.slice(0, extensionSeparator);
-  const rawExtension = trimmed.slice(extensionSeparator + 1).toLowerCase();
-  if (!allowedImageExtensions.has(rawExtension)) {
+  const safeExtension = trimmed
+    .slice(extensionSeparator + 1)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
+  if (!safeExtension) {
+    return null;
+  }
+
+  if (mode === "image" && !allowedImageExtensions.has(safeExtension)) {
     return null;
   }
 
@@ -139,35 +162,50 @@ function toSafePictureFilename(originalName: string): string | null {
     return null;
   }
 
-  return `${safeBase}.${rawExtension}`;
+  return `${safeBase}.${safeExtension}`;
 }
 
-export async function uploadPicturesDraft(
-  _previousState: UploadPicturesState,
-  formData: FormData
-): Promise<UploadPicturesState> {
+function expectPathPrefix(
+  path: string,
+  prefix: string,
+  message: string
+): { ok: true } | { ok: false; error: string } {
+  if (path.startsWith(prefix)) {
+    return { ok: true };
+  }
+
+  return {
+    ok: false,
+    error: message,
+  };
+}
+
+async function uploadAssetFilesDraft(
+  formData: FormData,
+  options: UploadOptions
+): Promise<UploadAssetsState> {
   await requireEditorAccess();
 
-  const imageFiles = formData
-    .getAll("imageFiles")
+  const assetFiles = formData
+    .getAll("assetFiles")
     .filter((value): value is File => value instanceof File && value.size > 0);
 
-  if (imageFiles.length === 0) {
+  if (assetFiles.length === 0) {
     return {
       status: "error",
-      message: "Select at least one image file.",
+      message: `Select at least one ${options.fileLabel} before submitting.`,
       fieldErrors: {
-        imageFiles: ["Select one or more image files before submitting."],
+        assetFiles: [`Select one or more ${options.fileLabel} before submitting.`],
       },
     };
   }
 
-  if (imageFiles.length > MAX_IMAGE_FILES) {
+  if (assetFiles.length > MAX_UPLOAD_FILES) {
     return {
       status: "error",
-      message: `Upload up to ${MAX_IMAGE_FILES} images per submission.`,
+      message: `Upload up to ${MAX_UPLOAD_FILES} files per submission.`,
       fieldErrors: {
-        imageFiles: [`Too many files selected (${imageFiles.length}).`],
+        assetFiles: [`Too many files selected (${assetFiles.length}).`],
       },
     };
   }
@@ -175,16 +213,16 @@ export async function uploadPicturesDraft(
   const validationErrors: string[] = [];
   const safeFilenames = new Set<string>();
 
-  for (const file of imageFiles) {
-    if (!allowedImageMimeTypes.has(file.type)) {
+  for (const file of assetFiles) {
+    if (options.mode === "image" && !allowedImageMimeTypes.has(file.type)) {
       validationErrors.push(`${file.name}: unsupported file type (${file.type || "unknown"}).`);
     }
 
-    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
       validationErrors.push(`${file.name}: file is larger than 10MB.`);
     }
 
-    const safeName = toSafePictureFilename(file.name);
+    const safeName = toSafeUploadFilename(file.name, options.mode);
     if (!safeName) {
       validationErrors.push(
         `${file.name}: filename must include a valid extension and use safe characters.`
@@ -205,19 +243,19 @@ export async function uploadPicturesDraft(
       status: "error",
       message: "Fix the upload issues and try again.",
       fieldErrors: {
-        imageFiles: validationErrors,
+        assetFiles: validationErrors,
       },
     };
   }
 
   try {
     const files = await Promise.all(
-      imageFiles.map(async (file) => {
-        const safeName = toSafePictureFilename(file.name) as string;
+      assetFiles.map(async (file) => {
+        const safeName = toSafeUploadFilename(file.name, options.mode) as string;
         const bytes = Buffer.from(await file.arrayBuffer());
 
         return {
-          path: `blobs/${safeName}`,
+          path: `${options.targetFolder}/${safeName}`,
           content: bytes.toString("base64"),
           encoding: "base64" as const,
         };
@@ -226,18 +264,18 @@ export async function uploadPicturesDraft(
 
     const editorSession = await getEditorSession();
     const author = buildPrAuthor(editorSession);
-    const branchName = `shr-admin/blobs-${Date.now()}`;
     const autoMerge = formData.get("autoMerge") === "on";
+    const branchName = `shr-admin/${options.branchPrefix}-${Date.now()}`;
     const result = await createContentPullRequestWithFiles({
-      title: `Pictures upload (${files.length} files)`,
+      title: `Upload ${options.contentLabel}`,
       files,
-      commitMessage: `Upload pictures (${files.length} files)`,
-      prTitle: `Pictures: upload ${files.length} image${files.length === 1 ? "" : "s"}`,
+      commitMessage: `Upload ${options.contentLabel}`,
+      prTitle: `Assets: upload ${options.contentLabel}`,
       prBody:
-        `Automated pictures upload created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
+        `Automated asset upload created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
         `- Content repo: ${contentConfig.repo}\n` +
         `- Files uploaded: ${files.length}\n` +
-        "- Target folder: blobs/",
+        `- Target folder: ${options.targetFolder}`,
       branchName,
       author,
       labels: autoMerge ? ["auto-merge"] : undefined,
@@ -245,7 +283,7 @@ export async function uploadPicturesDraft(
 
     return {
       status: "success",
-      message: `Opened PR #${result.prNumber}: ${result.prUrl}`,
+      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
     };
   } catch (error) {
     return {
@@ -253,30 +291,113 @@ export async function uploadPicturesDraft(
       message:
         error instanceof Error
           ? error.message
-          : "Failed to create the GitHub pull request.",
+          : "Failed to save this draft.",
     };
   }
 }
 
-export async function saveCollectionsYamlDraft(
-  _previousState: CollectionsYamlState,
-  formData: FormData
-): Promise<CollectionsYamlState> {
-  await requireEditorAccess();
+async function createYamlUpdatePullRequest(args: {
+  path: string;
+  content: string;
+  branchPrefix: string;
+  prTitle: string;
+  commitMessage: string;
+  summary: string;
+  autoMerge: boolean;
+}) {
   const editorSession = await getEditorSession();
   const author = buildPrAuthor(editorSession);
-  const editorName = editorSession.session?.user?.name ?? null;
 
-  const parsed = collectionsSectionUpdateSchema.safeParse({
-    targetSection: formData.get("targetSection"),
-    imagePath: formData.get("imagePath"),
-    imagePaths: formData.get("imagePaths"),
-    heroImagePath: formData.get("heroImagePath"),
+  return createContentPullRequest({
+    title: `Update ${args.path}`,
+    path: args.path,
+    content: args.content,
+    commitMessage: args.commitMessage,
+    prTitle: args.prTitle,
+    prBody:
+      `Automated ${args.path} update created by ${author ? `${author.name} (${author.email})` : "unknown"}.\n\n` +
+      `- Content repo: ${contentConfig.repo}\n` +
+      `- Path: ${args.path}\n` +
+      `- Summary: ${args.summary}`,
+    branchName: `shr-admin/${args.branchPrefix}-${Date.now()}`,
+    author,
+    labels: args.autoMerge ? ["auto-merge"] : undefined,
+  });
+}
+
+export async function uploadHomepageImagesDraft(
+  _previousState: UploadAssetsState,
+  formData: FormData
+): Promise<UploadAssetsState> {
+  return uploadAssetFilesDraft(formData, {
+    targetFolder: "blobs/homepage",
+    branchPrefix: "homepage-assets",
+    contentLabel: "homepage images",
+    fileLabel: "image files",
+    mode: "image",
+  });
+}
+
+export async function uploadDocumentsDraft(
+  _previousState: UploadAssetsState,
+  formData: FormData
+): Promise<UploadAssetsState> {
+  return uploadAssetFilesDraft(formData, {
+    targetFolder: "blobs/documents",
+    branchPrefix: "document-assets",
+    contentLabel: "documents",
+    fileLabel: "files",
+    mode: "any",
+  });
+}
+
+export async function uploadCommitteePortraitsDraft(
+  _previousState: UploadAssetsState,
+  formData: FormData
+): Promise<UploadAssetsState> {
+  return uploadAssetFilesDraft(formData, {
+    targetFolder: "blobs/portraits",
+    branchPrefix: "portrait-assets",
+    contentLabel: "committee portraits",
+    fileLabel: "image files",
+    mode: "image",
+  });
+}
+
+export async function uploadRaceImagesDraft(
+  _previousState: UploadAssetsState,
+  formData: FormData
+): Promise<UploadAssetsState> {
+  const raceId = String(formData.get("raceId") ?? "").trim();
+  if (!raceId) {
+    return {
+      status: "error",
+      message: "Race is required before uploading images.",
+      fieldErrors: {
+        assetFiles: ["Race is required before uploading images."],
+      },
+    };
+  }
+
+  return uploadAssetFilesDraft(formData, {
+    targetFolder: `blobs/races/${raceId}`,
+    branchPrefix: `race-images-${toSafeBranchSegment(raceId)}`,
+    contentLabel: `${raceId} race images`,
+    fileLabel: "image files",
+    mode: "image",
+  });
+}
+
+export async function saveHomepageImagesDraft(
+  _previousState: AssetMetadataState,
+  formData: FormData
+): Promise<AssetMetadataState> {
+  await requireEditorAccess();
+
+  const parsed = imageManifestEntrySchema.safeParse({
+    path: formData.get("path"),
     tier: formData.get("tier"),
     tags: formData.get("tags"),
-    raceSlug: formData.get("raceSlug"),
-    confidence: formData.get("confidence"),
-    source: formData.get("source"),
   });
 
   if (!parsed.success) {
@@ -287,311 +408,63 @@ export async function saveCollectionsYamlDraft(
     };
   }
 
-  const currentYamlText = await getCollectionsYamlDraft();
-  if (!currentYamlText) {
+  const yamlText = await getHomepageImagesDraft();
+  if (!yamlText) {
     return {
       status: "error",
-      message: "Could not load collections.yaml from the content repository.",
+      message: "Could not load the homepage image list from the content store.",
     };
   }
 
-  const validated = parseAndValidateCollectionsYaml(currentYamlText);
-
+  const validated = parseAndValidateHomepageImagesYaml(yamlText);
   if (!validated.data) {
     return {
       status: "error",
-      message: "collections.yaml is not valid.",
-      fieldErrors: {},
+      message: validated.error ?? "The homepage image list is not valid.",
     };
   }
 
-  const values = parsed.data;
+  const { path, tier, tags } = parsed.data;
   const nextData = structuredClone(validated.data);
-  const confidence = values.confidence && values.confidence.length > 0 ? values.confidence : "high";
-  const source =
-    values.source && values.source.length > 0
-      ? values.source
-      : toDefaultSource({
-          name: editorName,
-          email: editorSession.email,
-          login: editorSession.login,
-        });
-
-  if (values.targetSection === "race") {
-    if (!values.raceSlug) {
-      return {
-        status: "error",
-        message: "Please select a race.",
-        fieldErrors: {
-          raceSlug: ["Race is required when target section is race."],
-        },
-      };
-    }
-
-    const raceImagePaths = toUniqueImagePaths(
-      splitImagePaths(values.imagePaths ?? "").concat(
-        values.imagePath && values.imagePath.length > 0 ? [values.imagePath] : []
-      )
-    );
-
-    if (raceImagePaths.length === 0) {
-      return {
-        status: "error",
-        message: "Add one or more race image paths before submitting.",
-        fieldErrors: {
-          imagePaths: ["Add at least one image path for race updates."],
-        },
-      };
-    }
-
-    const invalidRacePaths = raceImagePaths.filter((path) => !path.startsWith("blobs/"));
-    if (invalidRacePaths.length > 0) {
-      return {
-        status: "error",
-        message: "Race image paths must start with blobs/.",
-        fieldErrors: {
-          imagePaths: invalidRacePaths.map(
-            (path) => `${path}: image paths must start with blobs/.`
-          ),
-        },
-      };
-    }
-
-    const heroImagePath = values.heroImagePath && values.heroImagePath.length > 0
-      ? values.heroImagePath
-      : null;
-
-    if (heroImagePath && !raceImagePaths.includes(heroImagePath)) {
-      return {
-        status: "error",
-        message: "Hero image must be one of the submitted race image paths.",
-        fieldErrors: {
-          heroImagePath: ["Choose a hero image from the submitted race image paths."],
-        },
-      };
-    }
-
-    const raceEntry = nextData.raceImagesBySlug[values.raceSlug];
-    if (!raceEntry) {
-      return {
-        status: "error",
-        message: "Selected race slug was not found in collections.yaml.",
-        fieldErrors: {
-          raceSlug: ["Choose a race that exists in collections.yaml."],
-        },
-      };
-    }
-
-    if (heroImagePath && raceEntry.hero.length > 0) {
-      return {
-        status: "error",
-        message: "This race already has a hero image.",
-        fieldErrors: {
-          heroImagePath: ["A race can only have one hero image."],
-        },
-      };
-    }
-
-    const duplicateRacePaths = raceImagePaths.filter(
-      (path) =>
-        raceEntry.hero.some((item) => item.path === path) ||
-        raceEntry.gallery.some((item) => item.path === path)
-    );
-
-    if (duplicateRacePaths.length > 0) {
-      return {
-        status: "error",
-        message: "Some submitted race images already exist for this race.",
-        fieldErrors: {
-          imagePaths: duplicateRacePaths.map(
-            (path) => `${path}: duplicate image path for selected race.`
-          ),
-        },
-      };
-    }
-
-    let heroCount = 0;
-    let galleryCount = 0;
-
-    for (const path of raceImagePaths) {
-      const entry = {
-        path,
-        confidence,
-        source,
-      };
-
-      if (heroImagePath && path === heroImagePath) {
-        raceEntry.hero.push(entry);
-        heroCount += 1;
-        continue;
-      }
-
-      raceEntry.gallery.push(entry);
-      galleryCount += 1;
-    }
-
-    const finalValidated = parseAndValidateCollectionsYaml(
-      stringifyCollectionsYaml(nextData)
-    );
-
-    if (!finalValidated.data) {
-      return {
-        status: "error",
-        message: "The requested change produced invalid collections.yaml content.",
-      };
-    }
-
-    const nextYamlText = stringifyCollectionsYaml(finalValidated.data);
-
-    const targetSummary = `race ${values.raceSlug} (${heroCount} hero, ${galleryCount} gallery)`;
-
-    try {
-      const autoMerge = formData.get("autoMerge") === "on";
-      const result = await createContentPullRequest({
-        title: "Update collections.yaml",
-        path: "collections.yaml",
-        content: nextYamlText,
-        commitMessage: `Update collections.yaml (${targetSummary})`,
-        prTitle: "Collections: update collections.yaml",
-        prBody:
-          `Automated collections.yaml update created by ${author ? `${author.name} (${author.email})` : "unknown"}.\n\n` +
-          `- Content repo: ${contentConfig.repo}\n` +
-          "- Path: collections.yaml\n" +
-          `- Target section: ${targetSummary}\n` +
-          "- Validated sections: collections, raceImageConfig, raceImagesBySlug",
-        branchName: `shr-admin/collections-yaml-${Date.now()}`,
-        author,
-        labels: autoMerge ? ["auto-merge"] : undefined,
-      });
-
-      return {
-        status: "success",
-        message: `Opened PR #${result.prNumber}: ${result.prUrl}`,
-      };
-    } catch (error) {
-      return {
-        status: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to create the GitHub pull request.",
-      };
-    }
-  } else {
-    const imagePath = (values.imagePath ?? "").trim();
-    if (!imagePath) {
-      return {
-        status: "error",
-        message: "Image path is required for collection entries.",
-        fieldErrors: {
-          imagePath: ["Image path is required for collection entries."],
-        },
-      };
-    }
-
-    if (!imagePath.startsWith("blobs/")) {
-      return {
-        status: "error",
-        message: "Image path must start with blobs/.",
-        fieldErrors: {
-          imagePath: ["Image path must start with blobs/."],
-        },
-      };
-    }
-
-    const targetCollection = nextData.collections.find(
-      (collection) => collection.id === values.targetSection
-    );
-
-    if (!targetCollection) {
-      return {
-        status: "error",
-        message: "Selected collection was not found in collections.yaml.",
-        fieldErrors: {
-          targetSection: ["Choose one of the available homepage or committee collections."],
-        },
-      };
-    }
-
-    const tier = (values.tier ?? "").trim();
-    if (!tier) {
-      return {
-        status: "error",
-        message: "Tier is required for collection image entries.",
-        fieldErrors: {
-          tier: ["Tier is required for homepage or committee collections."],
-        },
-      };
-    }
-
-    const tags = (values.tags ?? "")
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0);
-
-    if (tags.length === 0) {
-      return {
-        status: "error",
-        message: "Each image must have at least one tag.",
-        fieldErrors: {
-          tags: ["Each image must have at least one tag."],
-        },
-      };
-    }
-
-    if (targetCollection.items.some((item) => item.path === imagePath)) {
-      return {
-        status: "error",
-        message: "This image already exists in the selected collection.",
-        fieldErrors: {
-          imagePath: ["Duplicate image path for selected collection."],
-        },
-      };
-    }
-
-    targetCollection.items.push({
-      path: imagePath,
-      tier,
-      tags,
-    });
+  if (nextData.images.some((item) => item.path === path)) {
+    return {
+      status: "error",
+      message: "This path already exists in the homepage image list.",
+      fieldErrors: {
+        path: ["Duplicate path for homepage images."],
+      },
+    };
   }
 
-  const finalValidated = parseAndValidateCollectionsYaml(
-    stringifyCollectionsYaml(nextData)
-  );
+  nextData.images.push({
+    path,
+    tier,
+    tags: parseTags(tags),
+  });
 
+  const nextYamlText = stringifyHomepageImagesYaml(nextData);
+  const finalValidated = parseAndValidateHomepageImagesYaml(nextYamlText);
   if (!finalValidated.data) {
     return {
       status: "error",
-      message: "The requested change produced invalid collections.yaml content.",
+      message: "The requested change produced invalid homepage image list content.",
     };
   }
 
-  const nextYamlText = stringifyCollectionsYaml(finalValidated.data);
-  const targetSummary = values.targetSection;
-
   try {
-    const autoMerge = formData.get("autoMerge") === "on";
-    const result = await createContentPullRequest({
-      title: "Update collections.yaml",
-      path: "collections.yaml",
-      content: nextYamlText,
-      commitMessage: `Update collections.yaml (${targetSummary})`,
-      prTitle: "Collections: update collections.yaml",
-      prBody:
-`Automated collections.yaml update created by ${author ? `${author.name} (${author.email})` : "unknown"}.\n\n` +
-        `- Content repo: ${contentConfig.repo}\n` +
-        "- Path: collections.yaml\n" +
-        `- Target section: ${targetSummary}\n` +
-        "- Validated sections: collections, raceImageConfig, raceImagesBySlug",
-      branchName: `shr-admin/collections-yaml-${Date.now()}`,
-      author,
-      labels: autoMerge ? ["auto-merge"] : undefined,
+    const result = await createYamlUpdatePullRequest({
+      path: "homepage/images.yaml",
+      content: stringifyHomepageImagesYaml(finalValidated.data),
+      branchPrefix: "homepage-images-yaml",
+      prTitle: "Homepage images: update manifest",
+      commitMessage: `Update homepage/images.yaml (${path})`,
+      summary: `Added homepage image ${path}`,
+      autoMerge: formData.get("autoMerge") === "on",
     });
 
     return {
       status: "success",
-      message: `Opened PR #${result.prNumber}: ${result.prUrl}`,
+      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
     };
   } catch (error) {
     return {
@@ -599,7 +472,363 @@ export async function saveCollectionsYamlDraft(
       message:
         error instanceof Error
           ? error.message
-          : "Failed to create the GitHub pull request.",
+          : "Failed to save this draft.",
+    };
+  }
+}
+
+export async function saveDocumentsManifestDraft(
+  _previousState: AssetMetadataState,
+  formData: FormData
+): Promise<AssetMetadataState> {
+  await requireEditorAccess();
+
+  const parsed = documentManifestEntrySchema.safeParse({
+    path: formData.get("path"),
+    tier: formData.get("tier"),
+    tags: formData.get("tags"),
+    title: formData.get("title"),
+    description: formData.get("description"),
+  });
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Please fix the highlighted fields before continuing.",
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
+    };
+  }
+
+  const prefixCheck = expectPathPrefix(
+    parsed.data.path,
+    "blobs/documents/",
+    "Document paths must start with blobs/documents/."
+  );
+  if (!prefixCheck.ok) {
+    return {
+      status: "error",
+      message: prefixCheck.error,
+      fieldErrors: {
+        path: [prefixCheck.error],
+      },
+    };
+  }
+
+  const yamlText = await getDocumentsManifestDraft();
+  if (!yamlText) {
+    return {
+      status: "error",
+      message: "Could not load the document list from the content store.",
+    };
+  }
+
+  const validated = parseAndValidateDocumentsManifestYaml(yamlText);
+  if (!validated.data) {
+    return {
+      status: "error",
+      message: validated.error ?? "The document list is not valid.",
+    };
+  }
+
+  const { path, tier, tags, title, description } = parsed.data;
+  const nextData = structuredClone(validated.data);
+  if (nextData.documents.some((item) => item.path === path)) {
+    return {
+      status: "error",
+      message: "This path already exists in the document list.",
+      fieldErrors: {
+        path: ["Duplicate path for document manifest."],
+      },
+    };
+  }
+
+  nextData.documents.push({
+    path,
+    tier,
+    tags: parseTags(tags),
+    title,
+    description,
+  });
+
+  const nextYamlText = stringifyDocumentsManifestYaml(nextData);
+  const finalValidated = parseAndValidateDocumentsManifestYaml(nextYamlText);
+  if (!finalValidated.data) {
+    return {
+      status: "error",
+      message: "The requested change produced invalid document list content.",
+    };
+  }
+
+  try {
+    const result = await createYamlUpdatePullRequest({
+      path: "documents/manifest.yaml",
+      content: stringifyDocumentsManifestYaml(finalValidated.data),
+      branchPrefix: "documents-manifest",
+      prTitle: "Documents: update manifest",
+      commitMessage: `Update documents/manifest.yaml (${path})`,
+      summary: `Added document ${path}`,
+      autoMerge: formData.get("autoMerge") === "on",
+    });
+
+    return {
+      status: "success",
+      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to save this draft.",
+    };
+  }
+}
+
+export async function saveCommitteePortraitsDraft(
+  _previousState: AssetMetadataState,
+  formData: FormData
+): Promise<AssetMetadataState> {
+  await requireEditorAccess();
+
+  const parsed = imageManifestEntrySchema.safeParse({
+    path: formData.get("path"),
+    tier: formData.get("tier"),
+    tags: formData.get("tags"),
+  });
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Please fix the highlighted fields before continuing.",
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
+    };
+  }
+
+  const prefixCheck = expectPathPrefix(
+    parsed.data.path,
+    "blobs/portraits/",
+    "Portrait paths must start with blobs/portraits/."
+  );
+  if (!prefixCheck.ok) {
+    return {
+      status: "error",
+      message: prefixCheck.error,
+      fieldErrors: {
+        path: [prefixCheck.error],
+      },
+    };
+  }
+
+  const yamlText = await getCommitteePortraitsDraft();
+  if (!yamlText) {
+    return {
+      status: "error",
+      message: "Could not load the committee portrait list from the content store.",
+    };
+  }
+
+  const validated = parseAndValidateCommitteePortraitsYaml(yamlText);
+  if (!validated.data) {
+    return {
+      status: "error",
+      message: validated.error ?? "The committee portrait list is not valid.",
+    };
+  }
+
+  const { path, tier, tags } = parsed.data;
+  const nextData = structuredClone(validated.data);
+  if (nextData.portraits.some((item) => item.path === path)) {
+    return {
+      status: "error",
+      message: "This path already exists in the committee portrait list.",
+      fieldErrors: {
+        path: ["Duplicate path for committee portraits."],
+      },
+    };
+  }
+
+  nextData.portraits.push({
+    path,
+    tier,
+    tags: parseTags(tags),
+  });
+
+  const nextYamlText = stringifyCommitteePortraitsYaml(nextData);
+  const finalValidated = parseAndValidateCommitteePortraitsYaml(nextYamlText);
+  if (!finalValidated.data) {
+    return {
+      status: "error",
+      message: "The requested change produced invalid committee portrait list content.",
+    };
+  }
+
+  try {
+    const result = await createYamlUpdatePullRequest({
+      path: "committee/portraits.yaml",
+      content: stringifyCommitteePortraitsYaml(finalValidated.data),
+      branchPrefix: "committee-portraits-yaml",
+      prTitle: "Committee portraits: update manifest",
+      commitMessage: `Update committee/portraits.yaml (${path})`,
+      summary: `Added portrait ${path}`,
+      autoMerge: formData.get("autoMerge") === "on",
+    });
+
+    return {
+      status: "success",
+      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to save this draft.",
+    };
+  }
+}
+
+export async function saveRaceImagesDraft(
+  _previousState: AssetMetadataState,
+  formData: FormData
+): Promise<AssetMetadataState> {
+  await requireEditorAccess();
+
+  const parsed = raceImagesUpdateSchema.safeParse({
+    raceId: formData.get("raceId"),
+    imagePaths: formData.get("imagePaths"),
+    heroImagePath: formData.get("heroImagePath"),
+  });
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Please fix the highlighted fields before continuing.",
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
+    };
+  }
+
+  const { raceId } = parsed.data;
+  const expectedPrefix = `blobs/races/${raceId}/`;
+  const raceImagePaths = toUniquePaths(splitPaths(parsed.data.imagePaths ?? ""));
+  if (raceImagePaths.length === 0) {
+    return {
+      status: "error",
+      message: "Add one or more race image paths before submitting.",
+      fieldErrors: {
+        imagePaths: ["Add at least one image path for this race."],
+      },
+    };
+  }
+
+  const invalidPaths = raceImagePaths.filter((path) => !path.startsWith(expectedPrefix));
+  if (invalidPaths.length > 0) {
+    return {
+      status: "error",
+      message: `Race image paths must start with ${expectedPrefix}.`,
+      fieldErrors: {
+        imagePaths: invalidPaths.map(
+          (path) => `${path}: race image paths must start with ${expectedPrefix}.`
+        ),
+      },
+    };
+  }
+
+  const heroImagePath = parsed.data.heroImagePath?.trim() ? parsed.data.heroImagePath.trim() : null;
+  if (heroImagePath && !raceImagePaths.includes(heroImagePath)) {
+    return {
+      status: "error",
+      message: "Hero image must be one of the submitted race image paths.",
+      fieldErrors: {
+        heroImagePath: ["Choose a hero image from the submitted race image paths."],
+      },
+    };
+  }
+
+  const yamlText = await getRaceImagesDraft(raceId);
+  if (!yamlText) {
+    return {
+      status: "error",
+      message: `Could not load the image list for ${raceId} from the content store.`,
+    };
+  }
+
+  const validated = parseAndValidateRaceImagesYaml(yamlText);
+  if (!validated.data) {
+    return {
+      status: "error",
+      message: validated.error ?? `The image list for ${raceId} is not valid.`,
+    };
+  }
+
+  const nextData = structuredClone(validated.data);
+  const existingPaths = new Set([
+    ...nextData.hero.map((item) => item.path),
+    ...nextData.gallery.map((item) => item.path),
+  ]);
+  const duplicatePaths = raceImagePaths.filter((path) => existingPaths.has(path));
+  if (duplicatePaths.length > 0) {
+    return {
+      status: "error",
+      message: "Some submitted race images already exist for this race.",
+      fieldErrors: {
+        imagePaths: duplicatePaths.map((path) => `${path}: duplicate image path for selected race.`),
+      },
+    };
+  }
+
+  if (heroImagePath && nextData.hero.length > 0) {
+    return {
+      status: "error",
+      message: "This race already has a hero image.",
+      fieldErrors: {
+        heroImagePath: ["A race can only have one hero image."],
+      },
+    };
+  }
+
+  for (const path of raceImagePaths) {
+    const entry = { path };
+    if (heroImagePath && path === heroImagePath) {
+      nextData.hero.push(entry);
+      continue;
+    }
+
+    nextData.gallery.push(entry);
+  }
+
+  const nextYamlText = stringifyRaceImagesYaml(nextData);
+  const finalValidated = parseAndValidateRaceImagesYaml(nextYamlText);
+  if (!finalValidated.data) {
+    return {
+      status: "error",
+      message: `The requested change produced invalid image list content for ${raceId}.`,
+    };
+  }
+
+  try {
+    const result = await createYamlUpdatePullRequest({
+      path: `races/${raceId}/images.yaml`,
+      content: stringifyRaceImagesYaml(finalValidated.data),
+      branchPrefix: `race-images-yaml-${toSafeBranchSegment(raceId)}`,
+      prTitle: `Race images: update ${raceId}`,
+      commitMessage: `Update races/${raceId}/images.yaml`,
+      summary: `Added ${raceImagePaths.length} race image${raceImagePaths.length === 1 ? "" : "s"} for ${raceId}`,
+      autoMerge: formData.get("autoMerge") === "on",
+    });
+
+    return {
+      status: "success",
+      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to save this draft.",
     };
   }
 }

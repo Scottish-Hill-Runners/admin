@@ -8,8 +8,8 @@ export default async function PublishPage() {
   return (
     <EditorialShell
       eyebrow="Scottish Hill Runners"
-      title="Publish staged changes"
-      description="When staged content is ready, open a single pull request to publish all changes to the live site. SHR officials approve one PR instead of many."
+      title="Publish draft updates"
+      description="When draft updates are ready, submit a single publication request to send all changes live. SHR officials review one request instead of many."
     >
       <PublishForm stagingStatus={stagingStatus} />
     </EditorialShell>

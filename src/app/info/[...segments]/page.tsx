@@ -19,7 +19,7 @@ export default async function InfoEditPage({ params }: InfoEditPageProps) {
     <EditorialShell
       eyebrow="Edit info"
       title={`info/${filePath}`}
-      description={`Edit the markdown file at info/${filePath}.`}
+      description={`Edit the page file at info/${filePath}.`}
     >
       <nav className="flex flex-wrap items-center gap-2 text-sm text-stone-600">
         <Link href="/info" className="hover:text-stone-900 hover:underline underline-offset-4">

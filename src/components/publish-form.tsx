@@ -19,38 +19,38 @@ export function PublishForm({ stagingStatus }: PublishFormProps) {
     <div className="grid gap-6 lg:grid-cols-2">
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
-          Staging status
+          Publishing status
         </p>
 
         {stagingStatus.state === "error" ? (
           <p className="mt-3 text-sm leading-6 text-red-700">{stagingStatus.message}</p>
         ) : stagingStatus.state === "up-to-date" ? (
           <p className="mt-3 text-sm leading-6 text-stone-700">
-            Staging is up to date with the live branch. There is nothing to publish.
+            Draft updates are already in sync with the live site. There is nothing to publish.
           </p>
         ) : (
           <div className="mt-3 space-y-2 text-sm leading-6 text-stone-700">
             <p>
-              Staging is{" "}
-              <span className="font-semibold text-stone-900">{stagingStatus.aheadBy} commit{stagingStatus.aheadBy === 1 ? "" : "s"} ahead</span>{" "}
-              of the live branch and ready to publish.
+              Draft updates are{" "}
+              <span className="font-semibold text-stone-900">{stagingStatus.aheadBy} update{stagingStatus.aheadBy === 1 ? "" : "s"} ready</span>{" "}
+              to publish.
             </p>
             {stagingStatus.behindBy > 0 ? (
               <p className="text-amber-800">
-                Staging is also {stagingStatus.behindBy} commit{stagingStatus.behindBy === 1 ? "" : "s"} behind the live branch.
-                Officials should resolve the merge conflict when they review the PR.
+                The live site also has {stagingStatus.behindBy} newer update{stagingStatus.behindBy === 1 ? "" : "s"}.
+                An admin will review and resolve this before publishing.
               </p>
             ) : null}
             {stagingStatus.prUrl ? (
               <p>
-                A publish PR is already open:{" "}
+                A publication request is already open:{" "}
                 <a
                   href={stagingStatus.prUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="font-semibold text-amber-700 underline"
                 >
-                  view on GitHub
+                  view details
                 </a>
               </p>
             ) : null}
@@ -64,10 +64,10 @@ export function PublishForm({ stagingStatus }: PublishFormProps) {
             How it works
           </p>
           <ul className="mt-3 space-y-2 text-sm leading-6 text-stone-200">
-            <li>Every form save creates a PR targeting the <strong className="text-white">staging</strong> branch.</li>
-            <li>Auto-merge PRs land on staging automatically (via GitHub Actions).</li>
-            <li>This page opens a single <strong className="text-white">staging → main</strong> PR for officials to review and approve.</li>
-            <li>One merge triggers one site rebuild.</li>
+            <li>Every save creates a review request for draft updates.</li>
+            <li>&quot;Publish automatically&quot; requests can be approved without extra steps.</li>
+            <li>This page sends one publication request for admin review and approval.</li>
+            <li>Each approved request triggers one site rebuild.</li>
           </ul>
         </div>
 
@@ -87,7 +87,7 @@ export function PublishForm({ stagingStatus }: PublishFormProps) {
                   rel="noreferrer"
                   className="mt-1 inline-block text-sm font-semibold text-lime-300 underline"
                 >
-                  View PR on GitHub
+                  View request details
                 </a>
               ) : null}
             </div>
@@ -96,7 +96,7 @@ export function PublishForm({ stagingStatus }: PublishFormProps) {
               disabled={isPending || stagingStatus.state !== "ahead"}
               className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500"
             >
-              {isPending ? "Opening PR..." : "Open publish PR"}
+              {isPending ? "Submitting request..." : "Submit publication request"}
             </button>
           </div>
         </form>

@@ -86,7 +86,7 @@ export default async function RaceEditPage({ params }: RaceEditPageProps) {
             Race Photos
           </h2>
           <p className="mt-3 text-sm text-stone-500">
-            Upload race photos and register them in collections.yaml.
+            Upload race photos and update this race&apos;s image list.
           </p>
           <Link
             href={`/races/${encodeURIComponent(raceId)}/images`}

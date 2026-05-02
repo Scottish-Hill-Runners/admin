@@ -166,7 +166,7 @@ export async function saveResultsDraft(
   if (blockingIssues.length > 0) {
     return {
       status: "error",
-      message: "CSV validation failed. Fix the blocking issues before creating a draft PR.",
+      message: "CSV checks failed. Fix the blocking issues before saving this draft.",
       issues: issueMessages,
     };
   }
@@ -212,8 +212,8 @@ export async function saveResultsDraft(
     return {
       status: "success",
       message: shouldPrepareNewsTemplate
-        ? `Opened PR #${result.prNumber}: ${result.prUrl}. Redirecting to a prefilled news template.`
-        : `Opened PR #${result.prNumber}: ${result.prUrl}`,
+        ? `Saved draft #${result.prNumber}: ${result.prUrl}. Redirecting to a prefilled news template.`
+        : `Saved draft #${result.prNumber}: ${result.prUrl}`,
       issues: issueMessages,
       redirectToNewsUrl: shouldPrepareNewsTemplate
         ? buildNewsPrefillUrl(values.raceId, values.year, values.csvText)
@@ -225,7 +225,7 @@ export async function saveResultsDraft(
       message:
         error instanceof Error
           ? error.message
-          : "Failed to create the GitHub pull request.",
+          : "Failed to save this draft.",
       issues: issueMessages,
     };
   }

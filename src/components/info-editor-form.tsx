@@ -23,7 +23,7 @@ export function InfoEditorForm({ initialValues }: InfoEditorFormProps) {
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <label className="block space-y-2">
           <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
-            Markdown file path
+            Page file path
           </span>
           <input
             name="filePath"
@@ -42,7 +42,7 @@ export function InfoEditorForm({ initialValues }: InfoEditorFormProps) {
         <div className="mt-4 rounded-2xl border border-stone-900/10 bg-stone-100/70 px-4 py-3 text-sm leading-6 text-stone-700">
           <p className="font-semibold text-stone-900">Create new folders/pages</p>
           <p>
-            Enter a new path and save. The pull request will include that new markdown file path
+            Enter a new path and save. Your submission will include that new page file path
             under info/.
           </p>
           <p>Examples: <span className="font-semibold">about/history.md</span>, <span className="font-semibold">membership/index.md</span></p>
@@ -57,15 +57,15 @@ export function InfoEditorForm({ initialValues }: InfoEditorFormProps) {
           <p className="mt-3 text-sm leading-6 text-stone-200">
             Target path: <span className="font-semibold text-white">{displayPath}</span>
           </p>
-          <p className="text-sm leading-6 text-stone-300">Format: markdown body only (no frontmatter)</p>
+          <p className="text-sm leading-6 text-stone-300">Format: body text only (no extra metadata block)</p>
           <p className="text-sm leading-6 text-stone-300">Use index.md for directory default routes.</p>
         </div>
 
         <MarkdownEditorField
           id={`${formId}-content`}
           name="content"
-          label="Markdown content"
-          placeholder="Write the page markdown content."
+          label="Page content"
+          placeholder="Write the page content."
           defaultValue={initialValues?.content}
           errors={state.fieldErrors?.content}
         />
@@ -82,14 +82,14 @@ export function InfoEditorForm({ initialValues }: InfoEditorFormProps) {
           <div className="flex flex-col items-end gap-3">
             <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
               <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
-              Minor correction — auto-merge
+              Minor correction — publish automatically
             </label>
             <button
               type="submit"
               disabled={isPending}
               className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500"
             >
-              {isPending ? "Creating PR..." : "Save info draft PR"}
+              {isPending ? "Saving..." : "Save info draft"}
             </button>
           </div>
         </div>

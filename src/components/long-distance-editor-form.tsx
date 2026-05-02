@@ -60,7 +60,7 @@ export function LongDistanceEditorForm({ initialValues }: LongDistanceEditorForm
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <div className="grid gap-5 md:grid-cols-2">
           <InputField
-            label="Slug"
+            label="URL ending"
             name="slug"
             placeholder="(lowercase, hyphens — e.g. 'charlie-ramsays-round')"
             defaultValue={initialValues?.slug}
@@ -85,14 +85,14 @@ export function LongDistanceEditorForm({ initialValues }: LongDistanceEditorForm
             Target path:{" "}
             <span className="font-semibold text-white">long-distance/{slugValue}.md</span>
           </p>
-          <p className="text-sm leading-6 text-stone-300">Frontmatter: title</p>
-          <p className="text-sm leading-6 text-stone-300">Body: markdown report</p>
+          <p className="text-sm leading-6 text-stone-300">Saved fields: title</p>
+          <p className="text-sm leading-6 text-stone-300">Body: report text formatting</p>
         </div>
         <MarkdownEditorField
           id={`${formId}-content`}
           name="content"
           label="Report"
-          placeholder="Route description, history, records, and supporting information in markdown."
+          placeholder="Route description, history, records, and supporting information in plain text formatting."
           defaultValue={initialValues?.content}
           errors={state.fieldErrors?.content}
         />
@@ -109,14 +109,14 @@ export function LongDistanceEditorForm({ initialValues }: LongDistanceEditorForm
           <div className="flex flex-col items-end gap-3">
             <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
               <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
-              Minor correction — auto-merge
+              Minor correction — publish automatically
             </label>
             <button
               type="submit"
               disabled={isPending}
               className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500"
             >
-              {isPending ? "Creating PR..." : "Save report draft PR"}
+              {isPending ? "Saving..." : "Save report draft"}
             </button>
           </div>
         </div>
