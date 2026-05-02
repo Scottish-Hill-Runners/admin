@@ -32,7 +32,7 @@ export default async function RaceEditPage({ params }: RaceEditPageProps) {
       </nav>
 
       {/* ── Race management panel ──────────────────────────── */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         {/* Results card */}
         <div className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
           <h2 className="font-[family:var(--font-heading)] text-xl text-stone-900">
@@ -76,6 +76,23 @@ export default async function RaceEditPage({ params }: RaceEditPageProps) {
             className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 hover:text-amber-800 hover:underline underline-offset-4"
           >
             <span>Upload assets</span>
+            <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+
+        {/* Images card */}
+        <div className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
+          <h2 className="font-[family:var(--font-heading)] text-xl text-stone-900">
+            Race Photos
+          </h2>
+          <p className="mt-3 text-sm text-stone-500">
+            Upload race photos and register them in collections.yaml.
+          </p>
+          <Link
+            href={`/races/${encodeURIComponent(raceId)}/images`}
+            className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 hover:text-amber-800 hover:underline underline-offset-4"
+          >
+            <span>Upload images</span>
             <span aria-hidden="true">→</span>
           </Link>
         </div>

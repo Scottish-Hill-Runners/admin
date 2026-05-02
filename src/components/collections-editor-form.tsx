@@ -17,32 +17,19 @@ type CollectionsEditorFormProps = {
   loadError?: string | null;
 };
 
-const initialUploadState: UploadPicturesState = {
-  status: "idle",
-};
+const initialUploadState: UploadPicturesState = { status: "idle" };
+const initialYamlState: CollectionsYamlState = { status: "idle" };
 
-const initialYamlState: CollectionsYamlState = {
-  status: "idle",
-};
-
-type SelectedImagePreview = {
-  name: string;
-  url: string;
-};
+type SelectedImagePreview = { name: string; url: string };
 
 function toSafePictureFilename(originalName: string): string | null {
   const trimmed = String(originalName).trim();
-  const extensionSeparator = trimmed.lastIndexOf(".");
-  if (extensionSeparator <= 0 || extensionSeparator === trimmed.length - 1) {
-    return null;
-  }
+  const sep = trimmed.lastIndexOf(".");
+  if (sep <= 0 || sep === trimmed.length - 1) return null;
 
-  const rawBase = trimmed.slice(0, extensionSeparator);
-  const rawExtension = trimmed.slice(extensionSeparator + 1).toLowerCase();
-  const allowedImageExtensions = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
-  if (!allowedImageExtensions.has(rawExtension)) {
-    return null;
-  }
+  const rawBase = trimmed.slice(0, sep);
+  const rawExt = trimmed.slice(sep + 1).toLowerCase();
+  if (!new Set(["jpg", "jpeg", "png", "webp", "gif"]).has(rawExt)) return null;
 
   const safeBase = rawBase
     .toLowerCase()
@@ -51,34 +38,8 @@ function toSafePictureFilename(originalName: string): string | null {
     .replace(/^[-.]+/, "")
     .replace(/[-.]+$/, "");
 
-  if (!safeBase || safeBase === "." || safeBase === "..") {
-    return null;
-  }
-
-  return `${safeBase}.${rawExtension}`;
-}
-
-function splitImagePaths(value: string): string[] {
-  return value
-    .split(/[\n,]/)
-    .map((path) => path.trim())
-    .filter((path) => path.length > 0);
-}
-
-function toUniquePaths(paths: string[]): string[] {
-  const unique: string[] = [];
-  const seen = new Set<string>();
-
-  for (const path of paths) {
-    if (seen.has(path)) {
-      continue;
-    }
-
-    seen.add(path);
-    unique.push(path);
-  }
-
-  return unique;
+  if (!safeBase || safeBase === "." || safeBase === "..") return null;
+  return `${safeBase}.${rawExt}`;
 }
 
 export function CollectionsEditorForm({
@@ -88,49 +49,44 @@ export function CollectionsEditorForm({
 }: CollectionsEditorFormProps) {
   const [uploadState, uploadAction, uploadPending] = useActionState(
     uploadPicturesDraft,
-    initialUploadState
+    initialUploadState,
   );
   const [yamlState, yamlAction, yamlPending] = useActionState(
     saveCollectionsYamlDraft,
-    initialYamlState
+    initialYamlState,
   );
   const [selectedFileNames, setSelectedFileNames] = useState<string[]>([]);
-  const [selectedImagePreviews, setSelectedImagePreviews] = useState<SelectedImagePreview[]>([]);
-  const [manualRaceImagePaths, setManualRaceImagePaths] = useState<string>("");
-  const [heroImagePath, setHeroImagePath] = useState<string>("");
-  const [targetSection, setTargetSection] = useState<string>(
-    "race"
-  );
-  const [raceSlug, setRaceSlug] = useState<string>(raceOptions[0]?.value ?? "");
+  const [selectedImagePreviews, setSelectedImagePreviews] = useState<
+    SelectedImagePreview[]
+  >([]);
+  const [heroImagePath, setHeroImagePath] = useState("");
+  const [singleImagePath, setSingleImagePath] = useState("");
+  const [targetSection, setTargetSection] = useState("race");
+  const [raceSlug, setRaceSlug] = useState(raceOptions[0]?.value ?? "");
 
-  const uploadButtonLabel = uploadPending
-    ? "Uploading..."
-    : "Create pictures upload PR";
-  const yamlButtonLabel = yamlPending
-    ? "Validating..."
-    : "Create collections.yaml PR";
   const isRaceTarget = targetSection === "race";
   const selectedCollection = useMemo(
-    () => collectionOptions.find((option) => option.value === targetSection),
-    [collectionOptions, targetSection]
+    () => collectionOptions.find((o) => o.value === targetSection),
+    [collectionOptions, targetSection],
   );
+
   const uploadedImagePaths = useMemo(
     () =>
       selectedFileNames
-        .map((name) => toSafePictureFilename(name))
-        .filter((value): value is string => !!value)
-        .map((safeName) => `blobs/${safeName}`),
-    [selectedFileNames]
+        .map(toSafePictureFilename)
+        .filter((v): v is string => !!v)
+        .map((name) => `blobs/${name}`),
+    [selectedFileNames],
   );
-  const raceImagePaths = useMemo(
-    () => toUniquePaths(uploadedImagePaths.concat(splitImagePaths(manualRaceImagePaths))),
-    [manualRaceImagePaths, uploadedImagePaths]
-  );
-  const raceImagePathsPayload = useMemo(
-    () => raceImagePaths.join("\n"),
-    [raceImagePaths]
-  );
-  const selectedHeroImagePath = raceImagePaths.includes(heroImagePath) ? heroImagePath : "";
+
+  // Derive effective single path: keep user's selection if still valid, else first path
+  const effectiveSingleImagePath = uploadedImagePaths.includes(singleImagePath)
+    ? singleImagePath
+    : (uploadedImagePaths[0] ?? "");
+
+  const selectedHeroImagePath = uploadedImagePaths.includes(heroImagePath)
+    ? heroImagePath
+    : "";
 
   useEffect(() => {
     return () => {
@@ -144,32 +100,23 @@ export function CollectionsEditorForm({
     const files = event.target.files;
     if (!files) {
       setSelectedFileNames([]);
-      setSelectedImagePreviews((previousPreviews) => {
-        for (const preview of previousPreviews) {
-          URL.revokeObjectURL(preview.url);
-        }
-
+      setSelectedImagePreviews((prev) => {
+        for (const p of prev) URL.revokeObjectURL(p.url);
         return [];
       });
       return;
     }
-
-    const nextFiles = Array.from(files);
-    setSelectedFileNames(nextFiles.map((file) => file.name));
-    setSelectedImagePreviews((previousPreviews) => {
-      for (const preview of previousPreviews) {
-        URL.revokeObjectURL(preview.url);
-      }
-
-      return nextFiles.map((file) => ({
-        name: file.name,
-        url: URL.createObjectURL(file),
-      }));
+    const next = Array.from(files);
+    setSelectedFileNames(next.map((f) => f.name));
+    setSelectedImagePreviews((prev) => {
+      for (const p of prev) URL.revokeObjectURL(p.url);
+      return next.map((f) => ({ name: f.name, url: URL.createObjectURL(f) }));
     });
   }
 
   return (
     <div className="grid gap-6">
+      {/* ── Upload to blobs/ ──────────────────────────────── */}
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <div className="mb-5">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
@@ -242,7 +189,11 @@ export function CollectionsEditorForm({
             </p>
             <div className="flex flex-col items-end gap-3">
               <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-600">
-                <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-stone-700" />
+                <input
+                  type="checkbox"
+                  name="autoMerge"
+                  className="h-4 w-4 accent-stone-700"
+                />
                 Minor correction — auto-merge
               </label>
               <button
@@ -250,21 +201,22 @@ export function CollectionsEditorForm({
                 disabled={uploadPending}
                 className="rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-400"
               >
-                {uploadButtonLabel}
+                {uploadPending ? "Uploading…" : "Create pictures upload PR"}
               </button>
             </div>
           </div>
         </form>
       </section>
 
+      {/* ── Edit collections.yaml ─────────────────────────── */}
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-[#172119] p-6 text-stone-50 shadow-[0_22px_55px_rgba(23,33,25,0.24)]">
         <div className="mb-5">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
             Edit collections.yaml
           </p>
           <p className="mt-2 text-sm leading-6 text-stone-200">
-            Select homepage decorative, committee portraits, or race mappings and enter only
-            the required fields.
+            Register the uploaded images in collections.yaml. Select the target
+            section and fill in only the required fields.
           </p>
           {loadError ? (
             <p className="mt-2 text-sm leading-6 text-amber-200">{loadError}</p>
@@ -279,7 +231,7 @@ export function CollectionsEditorForm({
             <select
               name="targetSection"
               value={targetSection}
-              onChange={(event) => setTargetSection(event.target.value)}
+              onChange={(e) => setTargetSection(e.target.value)}
               className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
             >
               <option value="race">Race image</option>
@@ -305,7 +257,7 @@ export function CollectionsEditorForm({
               <select
                 name="raceSlug"
                 value={raceSlug}
-                onChange={(event) => setRaceSlug(event.target.value)}
+                onChange={(e) => setRaceSlug(e.target.value)}
                 className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
               >
                 {raceOptions.map((option) => (
@@ -323,60 +275,45 @@ export function CollectionsEditorForm({
             </p>
           ))}
 
+          {/* Image paths — derived from selected uploads only */}
           {isRaceTarget ? (
             <>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-                  Image paths
-                </span>
-                <textarea
-                  value={manualRaceImagePaths}
-                  onChange={(event) => setManualRaceImagePaths(event.target.value)}
-                  rows={5}
-                  placeholder="Add manual paths, one per line, e.g. blobs/race-day-1.jpg"
-                  className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
-                />
-              </label>
-
               {uploadedImagePaths.length > 0 ? (
                 <div className="rounded-2xl border border-lime-200/20 bg-black/25 p-3 text-sm text-stone-200">
-                  <p className="font-semibold text-lime-100">From selected uploads</p>
+                  <p className="font-semibold text-lime-100">Images to register</p>
                   <ul className="mt-2 space-y-1">
                     {uploadedImagePaths.map((path) => (
                       <li key={path}>{path}</li>
                     ))}
                   </ul>
                 </div>
-              ) : null}
+              ) : (
+                <p className="text-sm text-stone-400">
+                  Select files above to populate image paths.
+                </p>
+              )}
 
-              {raceImagePaths.length > 0 ? (
-                <div className="rounded-2xl border border-lime-200/20 bg-black/25 p-3 text-sm text-stone-200">
-                  <p className="font-semibold text-lime-100">
-                    This submission will create one race entry per image
-                  </p>
-                  <ul className="mt-2 space-y-1">
-                    {raceImagePaths.map((path) => (
-                      <li key={path}>{path}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              <input type="hidden" name="imagePaths" value={raceImagePathsPayload} readOnly />
+              <input
+                type="hidden"
+                name="imagePaths"
+                value={uploadedImagePaths.join("\n")}
+                readOnly
+              />
               <input type="hidden" name="imagePath" value="" readOnly />
 
               <label className="block space-y-2">
                 <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-                  Hero image (optional)
+                  Hero image{" "}
+                  <span className="font-normal text-stone-400">(optional)</span>
                 </span>
                 <select
                   name="heroImagePath"
                   value={selectedHeroImagePath}
-                  onChange={(event) => setHeroImagePath(event.target.value)}
+                  onChange={(e) => setHeroImagePath(e.target.value)}
                   className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
                 >
                   <option value="">No hero in this submission (all gallery)</option>
-                  {raceImagePaths.map((path) => (
+                  {uploadedImagePaths.map((path) => (
                     <option key={path} value={path}>
                       {path}
                     </option>
@@ -386,7 +323,8 @@ export function CollectionsEditorForm({
 
               <label className="block space-y-2">
                 <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-                  Confidence (optional)
+                  Confidence{" "}
+                  <span className="font-normal text-stone-400">(optional)</span>
                 </span>
                 <input
                   name="confidence"
@@ -397,7 +335,8 @@ export function CollectionsEditorForm({
 
               <label className="block space-y-2">
                 <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-                  Source (optional)
+                  Source{" "}
+                  <span className="font-normal text-stone-400">(optional)</span>
                 </span>
                 <input
                   name="source"
@@ -407,22 +346,50 @@ export function CollectionsEditorForm({
               </label>
 
               <p className="text-sm leading-6 text-stone-300">
-                Select one race once, then submit all image paths together. A race can have one
-                hero image total, and any number of gallery images.
+                Select one race, then submit all image paths together. A race can
+                have one hero image total, and any number of gallery images.
               </p>
             </>
           ) : (
             <>
-              <label className="block space-y-2">
-                <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-                  Image path
-                </span>
-                <input
-                  name="imagePath"
-                  placeholder="blobs/example.jpg"
-                  className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
-                />
-              </label>
+              {uploadedImagePaths.length > 1 ? (
+                <label className="block space-y-2">
+                  <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
+                    Image path
+                  </span>
+                  <select
+                    name="imagePath"
+                    value={effectiveSingleImagePath}
+                    onChange={(e) => setSingleImagePath(e.target.value)}
+                    className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"
+                  >
+                    {uploadedImagePaths.map((path) => (
+                      <option key={path} value={path}>
+                        {path}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <>
+                  <div className="rounded-2xl border border-lime-200/20 bg-black/25 p-3 text-sm text-stone-200">
+                    <p className="font-semibold text-lime-100">Image path</p>
+                    <p className="mt-1">
+                      {uploadedImagePaths[0] ?? (
+                        <span className="text-stone-400">
+                          Select a file above to populate.
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <input
+                    type="hidden"
+                    name="imagePath"
+                    value={effectiveSingleImagePath}
+                    readOnly
+                  />
+                </>
+              )}
 
               <label className="block space-y-2">
                 <span className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
@@ -452,32 +419,33 @@ export function CollectionsEditorForm({
             </>
           )}
 
-          <input type="hidden" name="raceSlug" value={isRaceTarget ? raceSlug : ""} readOnly />
+          <input
+            type="hidden"
+            name="raceSlug"
+            value={isRaceTarget ? raceSlug : ""}
+            readOnly
+          />
 
           {yamlState.fieldErrors?.imagePath?.map((error) => (
             <p key={error} className="text-sm text-red-200">
               {error}
             </p>
           ))}
-
           {yamlState.fieldErrors?.imagePaths?.map((error) => (
             <p key={error} className="text-sm text-red-200">
               {error}
             </p>
           ))}
-
           {yamlState.fieldErrors?.heroImagePath?.map((error) => (
             <p key={error} className="text-sm text-red-200">
               {error}
             </p>
           ))}
-
           {yamlState.fieldErrors?.tier?.map((error) => (
             <p key={error} className="text-sm text-red-200">
               {error}
             </p>
           ))}
-
           {yamlState.fieldErrors?.tags?.map((error) => (
             <p key={error} className="text-sm text-red-200">
               {error}
@@ -488,11 +456,7 @@ export function CollectionsEditorForm({
             <p className="text-sm leading-6 text-stone-300">
               Adding an image item to {selectedCollection.label}.
             </p>
-          ) : (
-            <p className="text-sm leading-6 text-stone-300">
-              One collections.yaml entry is created for each submitted race image path.
-            </p>
-          )}
+          ) : null}
 
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm leading-6 text-stone-200">
@@ -501,15 +465,19 @@ export function CollectionsEditorForm({
             </p>
             <div className="flex flex-col items-end gap-3">
               <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
-                <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
+                <input
+                  type="checkbox"
+                  name="autoMerge"
+                  className="h-4 w-4 accent-lime-400"
+                />
                 Minor correction — auto-merge
               </label>
               <button
                 type="submit"
-                disabled={yamlPending}
+                disabled={yamlPending || uploadedImagePaths.length === 0}
                 className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500"
               >
-                {yamlButtonLabel}
+                {yamlPending ? "Validating…" : "Create collections.yaml PR"}
               </button>
             </div>
           </div>

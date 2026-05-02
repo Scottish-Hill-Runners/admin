@@ -37,8 +37,8 @@ export default async function CollectionsPage() {
   return (
     <EditorialShell
       eyebrow="Images"
-      title="Upload Pictures and edit collections.yaml"
-      description="Upload one or more images to blobs/ and update collections metadata in a validated PR workflow."
+      title="Upload pictures and edit collections.yaml"
+      description="Upload one or more images to blobs/ and register them in collections.yaml in a validated PR workflow."
     >
       <CollectionsEditorForm
         collectionOptions={collectionOptions}
