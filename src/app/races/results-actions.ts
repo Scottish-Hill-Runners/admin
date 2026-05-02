@@ -43,6 +43,23 @@ function toRaceTitle(raceId: string): string {
     .join(" ");
 }
 
+function applyShortenedRouteToYear(year: string, shortenedRoute: boolean): string {
+  const baseYear = year.trim().replace(/\*+$/g, "");
+  if (!baseYear) {
+    return "";
+  }
+
+  return shortenedRoute ? `${baseYear}*` : baseYear;
+}
+
+function toBranchSafeSegment(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function toOrdinal(day: number): string {
   const remainder100 = day % 100;
   if (remainder100 >= 11 && remainder100 <= 13) {
@@ -139,9 +156,14 @@ export async function saveResultsDraft(
   formData: FormData
 ): Promise<ResultsUploadState> {
   const shouldPrepareNewsTemplate = formData.get("prepareNewsTemplate") === "on";
+  const shortenedRoute = formData.get("shortenedRoute") === "on";
+  const submittedYear = formData.get("resultsYear");
   const parsed = resultsUploadSchema.safeParse({
     raceId: formData.get("resultsRaceId"),
-    year: formData.get("resultsYear"),
+    year:
+      typeof submittedYear === "string"
+        ? applyShortenedRouteToYear(submittedYear, shortenedRoute)
+        : submittedYear,
     csvText: formData.get("csvText"),
   });
 
@@ -192,6 +214,8 @@ export async function saveResultsDraft(
           ].join("\n");
 
     const autoMerge = formData.get("autoMerge") === "on";
+    const raceIdBranchSegment = toBranchSafeSegment(values.raceId) || "race";
+    const yearBranchSegment = toBranchSafeSegment(values.year) || "year";
 
     const result = await createContentPullRequest({
       title: `${values.raceId} ${values.year} results`,
@@ -204,7 +228,7 @@ export async function saveResultsDraft(
         `- Content repo: ${contentConfig.repo}\n` +
         `- Path: races/${values.raceId}/${values.year}.csv\n\n` +
         warningsSection,
-      branchName: `shr-admin/results-${values.raceId.toLowerCase()}-${values.year.toLowerCase()}`,
+      branchName: `shr-admin/results-${raceIdBranchSegment}-${yearBranchSegment}`,
       author,
       labels: autoMerge ? ["auto-merge"] : undefined,
     });

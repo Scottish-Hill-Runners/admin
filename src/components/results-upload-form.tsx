@@ -16,14 +16,6 @@ const initialState: ResultsUploadState = {
   status: "idle",
 };
 
-type InputProps = {
-  label: string;
-  name: string;
-  placeholder?: string;
-  defaultValue?: string;
-  errors?: string[];
-};
-
 type ResultsUploadFormProps = {
   initialValues?: {
     raceId: string;
@@ -40,6 +32,19 @@ type ResultsUploadFormProps = {
 
 function normalizeLineEndings(value: string): string {
   return value.replace(/\r\n?/g, "\n");
+}
+
+function normalizeYearValue(value: string): string {
+  return value.trim().replace(/\*+$/g, "");
+}
+
+function buildEffectiveYear(value: string, shortenedRoute: boolean): string {
+  const normalized = normalizeYearValue(value);
+  if (!normalized) {
+    return "";
+  }
+
+  return shortenedRoute ? `${normalized}*` : normalized;
 }
 
 function parsePreview(csvText: string) {
@@ -76,34 +81,15 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debouncedValue;
 }
 
-function InputField({ label, name, placeholder, defaultValue, errors }: InputProps) {
-  return (
-    <label className="block space-y-2">
-      <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
-        {label}
-      </span>
-      <input
-        name={name}
-        placeholder={placeholder}
-        defaultValue={defaultValue}
-        className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
-      />
-      {errors?.map((error) => (
-        <p key={error} className="text-sm text-red-700">
-          {error}
-        </p>
-      ))}
-    </label>
-  );
-}
-
 export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceItems = [], knownClubNames }: ResultsUploadFormProps) {
   const router = useRouter();
   const [state, formAction, isPending] = useActionState(saveResultsDraft, initialState);
   const buttonLabel = isPending ? "Checking..." : "Save results draft";
   const currentYear = new Date().getFullYear().toString();
+  const initialYear = fixedYear ?? initialValues?.year ?? currentYear;
   const [raceIdValue, setRaceIdValue] = useState(fixedRaceId ?? initialValues?.raceId ?? "");
-  const [yearValue, setYearValue] = useState(fixedYear ?? initialValues?.year ?? currentYear);
+  const [yearValue, setYearValue] = useState(normalizeYearValue(initialYear));
+  const [shortenedRoute, setShortenedRoute] = useState(initialYear.trim().endsWith("*"));
   const [csvTextValue, setCsvTextValue] = useState(
     normalizeLineEndings(initialValues?.csvText ?? "")
   );
@@ -164,6 +150,10 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
 
     return map;
   }, [liveIssues]);
+  const effectiveYearValue = useMemo(
+    () => buildEffectiveYear(yearValue, shortenedRoute),
+    [shortenedRoute, yearValue]
+  );
 
   useEffect(() => {
     if (state.status !== "success" || !state.redirectToNewsUrl) {
@@ -184,9 +174,10 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
     setSelectedFileName(file.name);
     setCsvTextValue(normalizeLineEndings(text));
 
-    if (!fixedYear && (!yearValue || yearValue === currentYear.toString())) {
+    if (!fixedYear && (!yearValue || yearValue === currentYear)) {
       const yearFromName = file.name.replace(/\.csv$/i, "");
-      setYearValue(yearFromName || currentYear);
+      setYearValue(normalizeYearValue(yearFromName || currentYear));
+      setShortenedRoute(yearFromName.trim().endsWith("*"));
     }
   }
 
@@ -198,9 +189,6 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
         const target = event.target as HTMLInputElement | HTMLTextAreaElement;
         if (target.name === "resultsRaceId") {
           setRaceIdValue(target.value.trim() || "RaceId");
-        }
-        if (target.name === "resultsYear") {
-          setYearValue(target.value.trim() || "YYYY");
         }
       }}
     >
@@ -242,21 +230,43 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
           )}
           {fixedYear ? (
             <>
-              <input type="hidden" name="resultsYear" value={fixedYear} />
+              <input type="hidden" name="resultsYear" value={effectiveYearValue} />
               <div className="space-y-2">
                 <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">Year</p>
-                <p className="rounded-2xl border border-stone-900/10 bg-stone-100 px-4 py-3 text-base text-stone-900">{fixedYear}</p>
+                <p className="rounded-2xl border border-stone-900/10 bg-stone-100 px-4 py-3 text-base text-stone-900">{effectiveYearValue}</p>
               </div>
             </>
           ) : (
-            <InputField
-              label="Results filename"
-              name="resultsYear"
-              placeholder={currentYear}
-              defaultValue={initialValues?.year}
-              errors={state.fieldErrors?.year}
-            />
+            <label className="block space-y-2">
+              <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
+                Results filename
+              </span>
+              <input
+                name="resultsYear"
+                value={yearValue}
+                onChange={(event) => setYearValue(normalizeYearValue(event.target.value))}
+                placeholder={currentYear}
+                className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
+              />
+              {state.fieldErrors?.year?.map((error) => (
+                <p key={error} className="text-sm text-red-700">
+                  {error}
+                </p>
+              ))}
+            </label>
           )}
+          <label className="flex items-start gap-3 rounded-xl border border-stone-900/10 bg-stone-50 px-4 py-3">
+            <input
+              type="checkbox"
+              name="shortenedRoute"
+              checked={shortenedRoute}
+              onChange={(event) => setShortenedRoute(event.target.checked)}
+              className="mt-1 size-4 rounded border-stone-400 text-stone-900 focus:ring-stone-500"
+            />
+            <span className="text-sm leading-6 text-stone-700">
+              This race used a shortened route (adds * to the year, for example 2015*).
+            </span>
+          </label>
           <label className="block space-y-2">
             <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
               CSV file
@@ -303,7 +313,7 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
             Draft summary
           </p>
           <p className="mt-3 text-sm leading-6 text-stone-200">
-            Target path: <span className="font-semibold text-white">races/{raceIdValue || "<race>"}/{yearValue || "<year>"}.csv</span>
+            Target path: <span className="font-semibold text-white">races/{raceIdValue || "<race>"}/{effectiveYearValue || "<year>"}.csv</span>
           </p>
           <p className="text-sm leading-6 text-stone-300">
             Checks: header checks, time format checks, and runner category checks

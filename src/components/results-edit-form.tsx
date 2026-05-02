@@ -129,23 +129,6 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
       <input type="hidden" name="resultsYear" value={year} />
       <input type="hidden" name="csvText" value={csvTextValue} />
 
-      <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
-        <div className="space-y-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600 mb-1">
-              Race ID
-            </p>
-            <p className="text-lg font-semibold text-stone-900">{raceId}</p>
-          </div>
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600 mb-1">
-              Results year
-            </p>
-            <p className="text-lg font-semibold text-stone-900">{year}</p>
-          </div>
-        </div>
-      </section>
-
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-[#172119] p-6 text-stone-50 shadow-[0_22px_55px_rgba(23,33,25,0.24)]">
         <div className="mb-5 rounded-2xl border border-white/10 bg-black/15 p-4">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
