@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, Fragment } from "react";
 import { useActionState } from "react";
 import {
   saveResultsDraft,
@@ -91,9 +91,9 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
     return rows;
   }, [liveWarnings]);
 
-  const rowMessages = useMemo(() => {
+  const errorRowMessages = useMemo(() => {
     const map = new Map<number, string[]>();
-    for (const issue of liveIssues) {
+    for (const issue of liveErrors) {
       if (issue.row) {
         const existing = map.get(issue.row);
         if (existing) {
@@ -104,7 +104,24 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
       }
     }
     return map;
-  }, [liveIssues]);
+  }, [liveErrors]);
+
+  const warningRowMessages = useMemo(() => {
+    const map = new Map<number, string[]>();
+    for (const issue of liveWarnings) {
+      if (issue.row) {
+        const existing = map.get(issue.row);
+        if (existing) {
+          existing.push(issue.message);
+        } else {
+          map.set(issue.row, [issue.message]);
+        }
+      }
+    }
+    return map;
+  }, [liveWarnings]);
+
+  const [showWarningMessages, setShowWarningMessages] = useState(true);
 
   const updateCell = useCallback((rowIndex: number, colIndex: number, value: string) => {
     setGrid((prev) => {
@@ -190,13 +207,22 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
             </p>
             {headers.length > 0 ? (
               <>
-                <div className="mb-3 flex flex-wrap gap-3 text-sm">
+                <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
                   <span className="rounded-full bg-red-950/60 px-3 py-1 text-red-200">
                     Errors: {liveErrors.length}
                   </span>
                   <span className="rounded-full bg-amber-950/60 px-3 py-1 text-amber-200">
                     Warnings: {liveWarnings.length}
                   </span>
+                  {liveWarnings.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowWarningMessages((v) => !v)}
+                      className="ml-auto rounded-full border border-amber-300/30 px-3 py-1 text-amber-200/70 transition hover:border-amber-300/60 hover:text-amber-200"
+                    >
+                      {showWarningMessages ? "Hide warning details" : "Show warning details"}
+                    </button>
+                  ) : null}
                 </div>
                 {liveErrors.length > 0 && errorRows.size === 0 ? (
                   <p className="mb-3 text-sm leading-6 text-red-200">
@@ -235,60 +261,84 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
                         const rowNumber = dataRowIndex + 2;
                         const hasError = errorRows.has(rowNumber);
                         const hasWarning = !hasError && warningRows.has(rowNumber);
-                        const tooltip = rowMessages.get(rowNumber)?.join("\n");
+                        const rowErrorMessages = errorRowMessages.get(rowNumber);
+                        const rowWarningMessages = warningRowMessages.get(rowNumber);
 
                         return (
-                          <tr
-                            key={dataRowIndex}
-                            title={tooltip}
-                            style={
-                              hasError
-                                ? { backgroundColor: "rgba(185, 28, 28, 0.45)" }
-                                : hasWarning
-                                  ? { backgroundColor: "rgba(180, 120, 0, 0.40)" }
-                                  : undefined
-                            }
-                          >
-                            {headers.map((_, colIndex) => (
-                              <td
-                                key={colIndex}
-                                className={`border-b p-0 ${
-                                  hasError
-                                    ? "border-red-300/25"
-                                    : hasWarning
-                                      ? "border-amber-300/25"
-                                      : "border-white/5"
-                                }`}
-                              >
-                                <input
-                                  type="text"
-                                  value={row[colIndex] ?? ""}
-                                  onChange={(e) => updateCell(dataRowIndex + 1, colIndex, e.target.value)}
-                                  className={`w-full min-w-[5rem] bg-transparent px-2 py-1.5 text-sm outline-none focus:bg-white/10 ${
+                          <Fragment key={dataRowIndex}>
+                            <tr
+                              style={
+                                hasError
+                                  ? { backgroundColor: "rgba(185, 28, 28, 0.45)" }
+                                  : hasWarning
+                                    ? { backgroundColor: "rgba(180, 120, 0, 0.40)" }
+                                    : undefined
+                              }
+                            >
+                              {headers.map((_, colIndex) => (
+                                <td
+                                  key={colIndex}
+                                  className={`border-b p-0 ${
                                     hasError
-                                      ? "text-red-50 placeholder:text-red-300/50"
+                                      ? "border-red-300/25"
                                       : hasWarning
-                                        ? "text-amber-50 placeholder:text-amber-300/50"
-                                        : "text-stone-200"
+                                        ? "border-amber-300/25"
+                                        : "border-white/5"
                                   }`}
-                                  aria-label={`Row ${rowNumber}, ${headers[colIndex] ?? `column ${colIndex + 1}`}`}
-                                />
+                                >
+                                  <input
+                                    type="text"
+                                    value={row[colIndex] ?? ""}
+                                    onChange={(e) => updateCell(dataRowIndex + 1, colIndex, e.target.value)}
+                                    className={`w-full min-w-[5rem] bg-transparent px-2 py-1.5 text-sm outline-none focus:bg-white/10 ${
+                                      hasError
+                                        ? "text-red-50 placeholder:text-red-300/50"
+                                        : hasWarning
+                                          ? "text-amber-50 placeholder:text-amber-300/50"
+                                          : "text-stone-200"
+                                    }`}
+                                    aria-label={`Row ${rowNumber}, ${headers[colIndex] ?? `column ${colIndex + 1}`}`}
+                                  />
+                                </td>
+                              ))}
+                              <td className={`border-b p-0 text-center ${hasError ? "border-red-300/25" : hasWarning ? "border-amber-300/25" : "border-white/5"}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteRow(dataRowIndex)}
+                                  className="px-2 py-1.5 text-stone-500 transition hover:text-red-300"
+                                  aria-label={`Delete row ${rowNumber}`}
+                                  title="Delete row"
+                                >
+                                  ×
+                                </button>
                               </td>
-                            ))}
-                            <td className={`border-b p-0 text-center ${hasError ? "border-red-300/25" : hasWarning ? "border-amber-300/25" : "border-white/5"}`}>
-                              <button
-                                type="button"
-                                onClick={() => deleteRow(dataRowIndex)}
-                                className="px-2 py-1.5 text-stone-500 transition hover:text-red-300"
-                                aria-label={`Delete row ${rowNumber}`}
-                                title="Delete row"
-                              >
-                                ×
-                              </button>
-                            </td>
-                          </tr>
+                            </tr>
+                            {rowErrorMessages && rowErrorMessages.length > 0 ? (
+                              <tr style={{ backgroundColor: "rgba(185, 28, 28, 0.25)" }}>
+                                <td colSpan={colCount + 1} className="border-b border-red-300/15 px-2 py-1">
+                                  <ul className="space-y-0.5">
+                                    {rowErrorMessages.map((msg) => (
+                                      <li key={msg} className="text-xs text-red-200">⚠ {msg}</li>
+                                    ))}
+                                  </ul>
+                                </td>
+                              </tr>
+                            ) : null}
+                            {rowWarningMessages && rowWarningMessages.length > 0 && showWarningMessages ? (
+                              <tr style={{ backgroundColor: "rgba(180, 120, 0, 0.20)" }}>
+                                <td colSpan={colCount + 1} className="border-b border-amber-300/15 px-2 py-1">
+                                  <ul className="space-y-0.5">
+                                    {rowWarningMessages.map((msg) => (
+                                      <li key={msg} className="text-xs text-amber-200">ℹ {msg}</li>
+                                    ))}
+                                  </ul>
+                                </td>
+                              </tr>
+                            ) : null}
+                          </Fragment>
                         );
                       })}
+
                     </tbody>
                   </table>
                 </div>
