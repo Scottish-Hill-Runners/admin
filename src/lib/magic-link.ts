@@ -6,6 +6,18 @@ const subtle = globalThis.crypto.subtle;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+export class MagicLinkEmailError extends Error {
+  status: number;
+  responseBody: string;
+
+  constructor(message: string, status: number, responseBody: string) {
+    super(message);
+    this.name = "MagicLinkEmailError";
+    this.status = status;
+    this.responseBody = responseBody;
+  }
+}
+
 function toBase64Url(bytes: Uint8Array): string {
   const base64 = btoa(String.fromCharCode(...bytes));
   return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -144,6 +156,10 @@ export async function sendMagicLinkEmail(
 
   if (!response.ok) {
     const body = await response.text().catch(() => "(no body)");
-    throw new Error(`Resend API error ${response.status}: ${body}`);
+    throw new MagicLinkEmailError(
+      `Resend API error ${response.status}: ${body}`,
+      response.status,
+      body
+    );
   }
 }

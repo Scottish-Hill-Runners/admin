@@ -3,7 +3,11 @@
 import { headers } from "next/headers";
 import { z } from "zod";
 import { env } from "@/lib/env";
-import { generateMagicToken, sendMagicLinkEmail } from "@/lib/magic-link";
+import {
+  generateMagicToken,
+  MagicLinkEmailError,
+  sendMagicLinkEmail,
+} from "@/lib/magic-link";
 
 const emailSchema = z.string().email();
 
@@ -11,6 +15,26 @@ export type RequestMagicLinkState = {
   status: "idle" | "sent" | "error";
   error?: string;
 };
+
+function toUserFacingMagicLinkError(err: unknown): string {
+  if (!(err instanceof MagicLinkEmailError)) {
+    return "Failed to send sign-in email. Please try again.";
+  }
+
+  if (err.status === 401 || err.status === 403) {
+    return "Email sign-in is not set up yet. Please contact an administrator.";
+  }
+
+  if (err.status === 422) {
+    return "Email sign-in is not set up yet. Please contact an administrator.";
+  }
+
+  if (err.status >= 500) {
+    return "The email service is temporarily unavailable. Please try again.";
+  }
+
+  return "Failed to send sign-in email. Please try again.";
+}
 
 export async function requestMagicLink(
   _prev: RequestMagicLinkState,
@@ -44,10 +68,19 @@ export async function requestMagicLink(
     await sendMagicLinkEmail(parsed.data, token, baseUrl, callbackUrl);
     return { status: "sent" };
   } catch (err) {
-    console.error("Magic link send error:", err);
+    if (err instanceof MagicLinkEmailError) {
+      console.error("Magic link send error", {
+        status: err.status,
+        responseBody: err.responseBody,
+        message: err.message,
+      });
+    } else {
+      console.error("Magic link send error", err);
+    }
+
     return {
       status: "error",
-      error: "Failed to send sign-in email. Please try again.",
+      error: toUserFacingMagicLinkError(err),
     };
   }
 }
