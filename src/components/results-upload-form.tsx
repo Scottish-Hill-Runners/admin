@@ -107,6 +107,7 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
   );
   const liveErrors = liveIssues.filter((issue) => issue.level === "error");
   const liveWarnings = liveIssues.filter((issue) => issue.level === "warning");
+  const liveNotes = liveIssues.filter((issue) => issue.level === "note");
   const blockingErrorsExist = liveErrors.length > 0;
   const previewRows = useMemo(
     () => preview.rows.slice(0, PREVIEW_ROW_LIMIT),
@@ -134,6 +135,13 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
 
     return rows;
   }, [liveWarnings]);
+  const noteRows = useMemo(() => {
+    const rows = new Set<number>();
+    for (const issue of liveNotes)
+      if (issue.row)
+        rows.add(issue.row);
+    return rows;
+  }, [liveNotes]);
   const rowMessages = useMemo(() => {
     const map = new Map<number, string[]>();
 
@@ -405,6 +413,7 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
                         const rowNumber = rowIndex + 2;
                         const hasError = errorRows.has(rowNumber);
                         const hasWarning = !hasError && warningRows.has(rowNumber);
+                        const hasNote = !hasError && !hasWarning && noteRows.has(rowNumber);
                         const tooltip = rowMessages.get(rowNumber)?.join("\n");
 
                         return (
@@ -416,7 +425,9 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
                                 ? { backgroundColor: "rgba(185, 28, 28, 0.45)", cursor: "help" }
                                 : hasWarning
                                   ? { backgroundColor: "rgba(180, 120, 0, 0.40)", cursor: "help" }
-                                  : undefined
+                                  : hasNote
+                                    ? { backgroundColor: "rgba(0, 128, 128, 0.25)", cursor: "help" }
+                                    : undefined
                             }
                           >
                             {preview.headers.map((header, columnIndex) => (

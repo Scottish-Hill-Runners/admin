@@ -9,7 +9,7 @@ const RUNNER_CATEGORY_PATTERN = /^(M|F|A|NB?)\d{0,2}$/;
 
 export type CsvIssue = {
   row: number | null;
-  level: "error" | "warning";
+  level: "error" | "warning" | "note";
   message: string;
 };
 
@@ -350,14 +350,14 @@ export function validateRaceResultsCsv(
       issues.push({
         row: rowNumber,
         level: "warning",
-        message: `Unexpected runner category '${category}' (expected pattern: (M|F|A|NB?)\\d+)`,
+        message: `Unexpected runner category '${category}' (expected pattern: M, F, A or NB followed by optional digits, e.g. M40, F, NB50)`,
       });
     }
 
     if (knownClubNames && club && club.toLowerCase() !== "unattached" && !knownClubNames.has(club.toLowerCase())) {
       issues.push({
         row: rowNumber,
-        level: "warning",
+        level: "note",
         message: `Club '${club}' not found in club list`,
       });
     }

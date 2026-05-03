@@ -73,6 +73,7 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
   );
   const liveErrors = liveIssues.filter((issue) => issue.level === "error");
   const liveWarnings = liveIssues.filter((issue) => issue.level === "warning");
+  const liveNotes = liveIssues.filter((issue) => issue.level === "note");
   const blockingErrorsExist = liveErrors.length > 0;
 
   const errorRows = useMemo(() => {
@@ -90,6 +91,14 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
     }
     return rows;
   }, [liveWarnings]);
+
+  const noteRows = useMemo(() => {
+    const rows = new Set<number>();
+    for (const issue of liveNotes) {
+      if (issue.row) rows.add(issue.row);
+    }
+    return rows;
+  }, [liveNotes]);
 
   const errorRowMessages = useMemo(() => {
     const map = new Map<number, string[]>();
@@ -120,6 +129,21 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
     }
     return map;
   }, [liveWarnings]);
+
+  const noteRowMessages = useMemo(() => {
+    const map = new Map<number, string[]>();
+    for (const issue of liveNotes) {
+      if (issue.row) {
+        const existing = map.get(issue.row);
+        if (existing) {
+          existing.push(issue.message);
+        } else {
+          map.set(issue.row, [issue.message]);
+        }
+      }
+    }
+    return map;
+  }, [liveNotes]);
 
   const [showWarningMessages, setShowWarningMessages] = useState(true);
 
@@ -261,8 +285,10 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
                         const rowNumber = dataRowIndex + 2;
                         const hasError = errorRows.has(rowNumber);
                         const hasWarning = !hasError && warningRows.has(rowNumber);
+                        const hasNote = !hasError && !hasWarning && noteRows.has(rowNumber);
                         const rowErrorMessages = errorRowMessages.get(rowNumber);
                         const rowWarningMessages = warningRowMessages.get(rowNumber);
+                        const rowNoteMessages = noteRowMessages.get(rowNumber);
 
                         return (
                           <Fragment key={dataRowIndex}>
@@ -272,7 +298,9 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
                                   ? { backgroundColor: "rgba(185, 28, 28, 0.45)" }
                                   : hasWarning
                                     ? { backgroundColor: "rgba(180, 120, 0, 0.40)" }
-                                    : undefined
+                                    : hasNote
+                                      ? { backgroundColor: "rgba(100, 100, 100, 0.25)" }
+                                      : undefined
                               }
                             >
                               {headers.map((_, colIndex) => (
@@ -329,6 +357,17 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
                                 <td colSpan={colCount + 1} className="border-b border-amber-300/15 px-2 py-1">
                                   <ul className="space-y-0.5">
                                     {rowWarningMessages.map((msg) => (
+                                      <li key={msg} className="text-xs text-amber-200">ℹ {msg}</li>
+                                    ))}
+                                  </ul>
+                                </td>
+                              </tr>
+                            ) : null}
+                            {rowNoteMessages && rowNoteMessages.length > 0 && showWarningMessages ? (
+                              <tr style={{ backgroundColor: "rgba(180, 120, 0, 0.20)" }}>
+                                <td colSpan={colCount + 1} className="border-b border-amber-300/15 px-2 py-1">
+                                  <ul className="space-y-0.5">
+                                    {rowNoteMessages.map((msg) => (
                                       <li key={msg} className="text-xs text-amber-200">ℹ {msg}</li>
                                     ))}
                                   </ul>
