@@ -328,7 +328,8 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
           <span className="ml-2 text-sm font-normal text-stone-400">optional</span>
         </h2>
         <p className="mt-1 mb-5 text-sm text-stone-500">
-          JPG, PNG, WebP, or SVG. Max 10 MB. Saved as{" "}
+          JPG, PNG, WebP, or SVG. Images are prepared automatically in the
+          background to keep file sizes web-friendly. Max 10 MB. Saved as{" "}
           <code>races/&lt;id&gt;/map.*</code>.
         </p>
 

@@ -7,6 +7,7 @@ import {
   type AssetMetadataState,
   type UploadAssetsState,
 } from "@/app/collections/actions";
+import { toSafeUploadFilename } from "@/lib/upload-filename";
 
 type SelectedPreview = { name: string; url: string };
 
@@ -43,39 +44,6 @@ type AssetManifestEditorFormProps = {
 
 const initialUploadState: UploadAssetsState = { status: "idle" };
 const initialMetadataState: AssetMetadataState = { status: "idle" };
-const imageExtensions = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
-
-function toSafeUploadFilename(originalName: string): string | null {
-  const trimmed = String(originalName).trim();
-  const extensionSeparator = trimmed.lastIndexOf(".");
-  if (extensionSeparator <= 0 || extensionSeparator === trimmed.length - 1) {
-    return null;
-  }
-
-  const rawBase = trimmed.slice(0, extensionSeparator);
-  const safeExtension = trimmed
-    .slice(extensionSeparator + 1)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
-
-  if (!safeExtension) {
-    return null;
-  }
-
-  const safeBase = rawBase
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^[-.]+/, "")
-    .replace(/[-.]+$/, "");
-
-  if (!safeBase || safeBase === "." || safeBase === "..") {
-    return null;
-  }
-
-  return `${safeBase}.${safeExtension}`;
-}
-
 export function AssetManifestEditorForm({
   uploadAction,
   saveAction,
@@ -139,13 +107,13 @@ export function AssetManifestEditorForm({
 
       return nextFiles
         .filter((file) => {
-          const safeName = toSafeUploadFilename(file.name);
+          const safeName = toSafeUploadFilename(file.name, "image");
           if (!safeName) {
             return false;
           }
 
           const extension = safeName.split(".").pop() ?? "";
-          return imageExtensions.has(extension);
+          return extension === "jpg" || extension === "webp";
         })
         .map((file) => ({ name: file.name, url: URL.createObjectURL(file) }));
     });
@@ -154,10 +122,14 @@ export function AssetManifestEditorForm({
   const uploadedPaths = useMemo(
     () =>
       selectedFileNames
-        .map(toSafeUploadFilename)
+        .map((name) =>
+          previewMode === "image"
+            ? toSafeUploadFilename(name, "image")
+            : toSafeUploadFilename(name, "any")
+        )
         .filter((value): value is string => Boolean(value))
         .map((safeName) => `${uploadPathPrefix}/${safeName}`),
-    [selectedFileNames, uploadPathPrefix]
+    [previewMode, selectedFileNames, uploadPathPrefix]
   );
 
   return (
@@ -240,7 +212,9 @@ export function AssetManifestEditorForm({
             <p className="text-sm leading-6 text-stone-600">
               {uploadState.status === "success" || uploadState.status === "error"
                 ? uploadState.message
-                : `Uploads land in ${uploadPathPrefix}.`}
+                : previewMode === "image"
+                  ? `Images are prepared automatically before they are saved to ${uploadPathPrefix}.`
+                  : `Uploads land in ${uploadPathPrefix}.`}
             </p>
             <div className="flex flex-col items-end gap-3">
               <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-600">

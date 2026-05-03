@@ -22,6 +22,8 @@ import {
   stringifyRaceImagesYaml,
 } from "@/lib/collections-yaml";
 import { requireEditorAccess } from "@/lib/route-protection";
+import { optimizeUploadedImage } from "@/lib/image-upload";
+import { toSafeUploadFilename, type UploadMode } from "@/lib/upload-filename";
 
 const MAX_UPLOAD_FILES = 20;
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
@@ -31,7 +33,6 @@ const allowedImageMimeTypes = new Set([
   "image/webp",
   "image/gif",
 ]);
-const allowedImageExtensions = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
 
 const assetPathSchema = z
   .string()
@@ -78,8 +79,6 @@ export type AssetMetadataState = {
     heroImagePath?: string[];
   };
 };
-
-type UploadMode = "image" | "any";
 
 type UploadOptions = {
   targetFolder: string;
@@ -130,41 +129,6 @@ function toSafeBranchSegment(value: string): string {
   );
 }
 
-function toSafeUploadFilename(originalName: string, mode: UploadMode): string | null {
-  const trimmed = String(originalName).trim();
-  const extensionSeparator = trimmed.lastIndexOf(".");
-  if (extensionSeparator <= 0 || extensionSeparator === trimmed.length - 1) {
-    return null;
-  }
-
-  const rawBase = trimmed.slice(0, extensionSeparator);
-  const safeExtension = trimmed
-    .slice(extensionSeparator + 1)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
-
-  if (!safeExtension) {
-    return null;
-  }
-
-  if (mode === "image" && !allowedImageExtensions.has(safeExtension)) {
-    return null;
-  }
-
-  const safeBase = rawBase
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^[-.]+/, "")
-    .replace(/[-.]+$/, "");
-
-  if (!safeBase || safeBase === "." || safeBase === "..") {
-    return null;
-  }
-
-  return `${safeBase}.${safeExtension}`;
-}
-
 function expectPathPrefix(
   path: string,
   prefix: string,
@@ -186,9 +150,13 @@ async function uploadAssetFilesDraft(
 ): Promise<UploadAssetsState> {
   await requireEditorAccess();
 
-  const assetFiles = formData
+  const selectedAssetFiles = formData
     .getAll("assetFiles")
     .filter((value): value is File => value instanceof File && value.size > 0);
+  const selectedImageFiles = formData
+    .getAll("imageFiles")
+    .filter((value): value is File => value instanceof File && value.size > 0);
+  const assetFiles = selectedAssetFiles.length > 0 ? selectedAssetFiles : selectedImageFiles;
 
   if (assetFiles.length === 0) {
     return {
@@ -252,7 +220,14 @@ async function uploadAssetFilesDraft(
     const files = await Promise.all(
       assetFiles.map(async (file) => {
         const safeName = toSafeUploadFilename(file.name, options.mode) as string;
-        const bytes = Buffer.from(await file.arrayBuffer());
+        const bytes =
+          options.mode === "image"
+            ? (await optimizeUploadedImage({
+                file,
+                maxBytes: MAX_UPLOAD_SIZE_BYTES,
+                preset: "racePhoto",
+              })).buffer
+            : Buffer.from(await file.arrayBuffer());
 
         return {
           path: `${options.targetFolder}/${safeName}`,

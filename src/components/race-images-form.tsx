@@ -9,6 +9,7 @@ import {
   type AssetMetadataState,
   type UploadAssetsState,
 } from "@/app/collections/actions";
+import { toSafeUploadFilename } from "@/lib/upload-filename";
 
 type RaceImagesFormProps = {
   fixedRaceSlug: string;
@@ -20,26 +21,6 @@ const initialUploadState: UploadAssetsState = { status: "idle" };
 const initialYamlState: AssetMetadataState = { status: "idle" };
 
 type SelectedImagePreview = { name: string; url: string };
-
-function toSafePictureFilename(originalName: string): string | null {
-  const trimmed = String(originalName).trim();
-  const sep = trimmed.lastIndexOf(".");
-  if (sep <= 0 || sep === trimmed.length - 1) return null;
-
-  const rawBase = trimmed.slice(0, sep);
-  const rawExt = trimmed.slice(sep + 1).toLowerCase();
-  if (!new Set(["jpg", "jpeg", "png", "webp", "gif"]).has(rawExt)) return null;
-
-  const safeBase = rawBase
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^[-.]+/, "")
-    .replace(/[-.]+$/, "");
-
-  if (!safeBase || safeBase === "." || safeBase === "..") return null;
-  return `${safeBase}.${rawExt}`;
-}
 
 function splitImagePaths(value: string): string[] {
   return value
@@ -102,7 +83,7 @@ export function RaceImagesForm({
   const uploadedImagePaths = useMemo(
     () =>
       selectedFileNames
-        .map(toSafePictureFilename)
+        .map((name) => toSafeUploadFilename(name, "image"))
         .filter((v): v is string => !!v)
         .map((name) => `blobs/races/${fixedRaceSlug}/${name}`),
     [fixedRaceSlug, selectedFileNames],
@@ -130,8 +111,9 @@ export function RaceImagesForm({
         </h2>
         <p className="mt-1 mb-5 text-sm text-stone-500">
           Select one or more images to add to <code>{`blobs/races/${fixedRaceSlug}/`}</code>
-          in the content store. Accepted formats: JPG, PNG, WEBP, GIF. Max 20 files,
-          10 MB each.
+          in the content store. Images are prepared automatically in the background
+          to keep file sizes web-friendly. Accepted formats: JPG, PNG, WEBP, GIF.
+          Max 20 files, 10 MB each.
         </p>
 
         <form action={uploadAction} className="grid gap-4">

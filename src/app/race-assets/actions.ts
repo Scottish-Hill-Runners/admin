@@ -3,6 +3,7 @@
 import { createContentPullRequestWithFiles } from "@/lib/github";
 import { cleanGpx } from "@/lib/gpx-processing";
 import { getEditorSession, buildPrAuthor } from "@/lib/auth-session";
+import { optimizeUploadedImage } from "@/lib/image-upload";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_GPX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -63,10 +64,6 @@ export async function uploadRaceAssets(
 
   // --- process image ---
   if (hasImage && imageFile instanceof File) {
-    if (imageFile.size > MAX_IMAGE_BYTES) {
-      return { status: "error", message: "Map image must be under 10 MB." };
-    }
-
     const ext = imageFile.name.toLowerCase().split(".").pop() ?? "";
     if (!ALLOWED_IMAGE_EXTS.has(ext)) {
       return {
@@ -75,14 +72,27 @@ export async function uploadRaceAssets(
       };
     }
 
-    const ab = await imageFile.arrayBuffer();
-    const base64 = Buffer.from(ab).toString("base64");
-    // Normalise .jpeg → .jpg
-    const outputExt = ext === "jpeg" ? "jpg" : ext;
+    let optimizedImage;
+    try {
+      optimizedImage = await optimizeUploadedImage({
+        file: imageFile,
+        maxBytes: MAX_IMAGE_BYTES,
+        preset: "mapImage",
+        allowSvg: true,
+      });
+    } catch (error) {
+      return {
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Map image could not be processed.",
+      };
+    }
 
     files.push({
-      path: `races/${raceId}/map.${outputExt}`,
-      content: base64,
+      path: `races/${raceId}/map.${optimizedImage.outputExtension}`,
+      content: optimizedImage.buffer.toString("base64"),
       encoding: "base64",
     });
   }
