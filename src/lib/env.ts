@@ -19,7 +19,8 @@ const boolWithDefaultFalse = z.preprocess((value) => {
   return ["1", "true", "yes", "on"].includes(normalized);
 }, z.boolean());
 
-const envSchema = z.object({
+const envSchema = z
+  .object({
   AUTH_SECRET: optStr,
   NEXTAUTH_URL: z.preprocess((v) => (v === "" ? undefined : v), z.url().optional()),
   GITHUB_CLIENT_ID: optStr,
@@ -40,7 +41,17 @@ const envSchema = z.object({
   GITHUB_APP_INSTALLATION_ID: optStr,
   GITHUB_DEBUG_PERF: boolWithDefaultFalse,
   PUBLISHER_EMAILS: optStr,
-});
+  })
+  .superRefine((value, ctx) => {
+    if (value.CONTENT_BRANCH === value.CONTENT_STAGING_BRANCH) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["CONTENT_STAGING_BRANCH"],
+        message:
+          "CONTENT_STAGING_BRANCH must be different from CONTENT_BRANCH to keep draft submissions off the live branch.",
+      });
+    }
+  });
 
 export const env = envSchema.parse({
   AUTH_SECRET: process.env.AUTH_SECRET,

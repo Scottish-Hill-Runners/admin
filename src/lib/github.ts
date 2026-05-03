@@ -988,6 +988,12 @@ export async function listRaceResultsDrafts(raceId: string): Promise<RaceResultL
 async function ensureStagingBranch(client: Octokit, repo: RepoRef): Promise<string> {
   const stagingBranch = contentConfig.stagingBranch;
 
+  if (stagingBranch === contentConfig.branch) {
+    throw new Error(
+      "Draft updates are misconfigured: CONTENT_STAGING_BRANCH must be different from CONTENT_BRANCH."
+    );
+  }
+
   try {
     await requestGitHubGet<{ object: { sha: string } }>(
       client,
