@@ -1463,3 +1463,84 @@ export async function getInfoDraft(filePath: string): Promise<InfoFormData | nul
   };
 }
 
+export type StagingPullRequest = {
+  number: number;
+  title: string;
+  createdAt: string;
+  htmlUrl: string;
+  submitterName: string | null;
+  submitterEmail: string | null;
+};
+
+export async function listOpenStagingPullRequests(): Promise<StagingPullRequest[]> {
+  const client = getGitHubClient();
+  if (!client) {
+    throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+
+  const prs = await client.request("GET /repos/{owner}/{repo}/pulls", {
+    owner: repo.owner,
+    repo: repo.repo,
+    state: "open",
+    base: contentConfig.stagingBranch,
+    sort: "created",
+    direction: "asc",
+    per_page: 50,
+  });
+
+  return prs.data.map((pr) => {
+    const editorLine = (pr.body ?? "").split("\n").find((line) => line.startsWith("- Editor:"));
+    let submitterName: string | null = null;
+    let submitterEmail: string | null = null;
+
+    if (editorLine) {
+      const match = editorLine.match(/^- Editor:\s+(.+?)\s+<(.+?)>$/);
+      if (match) {
+        submitterName = match[1] ?? null;
+        submitterEmail = match[2] ?? null;
+      }
+    }
+
+    return {
+      number: pr.number,
+      title: pr.title,
+      createdAt: pr.created_at,
+      htmlUrl: pr.html_url,
+      submitterName,
+      submitterEmail,
+    };
+  });
+}
+
+export async function mergePullRequest(pullNumber: number): Promise<{ sha: string }> {
+  const client = getGitHubClient();
+  if (!client) {
+    throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+
+  const result = await client.pulls.merge({
+    owner: repo.owner,
+    repo: repo.repo,
+    pull_number: pullNumber,
+    merge_method: "merge",
+  });
+
+  if (!result.data.merged) {
+    throw new Error("The submission could not be accepted — it may have a conflict or may already be closed.");
+  }
+
+  return { sha: result.data.sha ?? "" };
+}
+
+export async function publishAndMergeToLive(
+  author?: { name: string; email: string }
+): Promise<{ prNumber: number; prUrl: string; sha: string }> {
+  const { prNumber, prUrl } = await publishStagingToLive(author);
+  const { sha } = await mergePullRequest(prNumber);
+  return { prNumber, prUrl, sha };
+}
+

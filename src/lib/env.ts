@@ -39,6 +39,7 @@ const envSchema = z.object({
   GITHUB_APP_PRIVATE_KEY: optStr,
   GITHUB_APP_INSTALLATION_ID: optStr,
   GITHUB_DEBUG_PERF: boolWithDefaultFalse,
+  PUBLISHER_EMAILS: optStr,
 });
 
 export const env = envSchema.parse({
@@ -61,4 +62,5 @@ export const env = envSchema.parse({
   GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,
   GITHUB_APP_INSTALLATION_ID: process.env.GITHUB_APP_INSTALLATION_ID,
   GITHUB_DEBUG_PERF: process.env.GITHUB_DEBUG_PERF,
+  PUBLISHER_EMAILS: process.env.PUBLISHER_EMAILS,
 });

@@ -1,5 +1,19 @@
 import { redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { getEditorSession } from "@/lib/auth-session";
+import { env } from "@/lib/env";
+
+function getPublisherEmails(): string[] {
+  if (!env.PUBLISHER_EMAILS) return [];
+  return env.PUBLISHER_EMAILS.split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isPublisher(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return getPublisherEmails().includes(email.toLowerCase());
+}
 
 type RequireEditorAccessOptions = {
   callbackUrl?: string;
@@ -25,5 +39,13 @@ export async function requireEditorAccess(options?: RequireEditorAccessOptions) 
     redirect("/sign-in");
   }
 
+  return result;
+}
+
+export async function requirePublisherAccess() {
+  const result = await requireEditorAccess();
+  if (!isPublisher(result.email)) {
+    notFound();
+  }
   return result;
 }

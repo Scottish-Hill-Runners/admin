@@ -3,6 +3,7 @@ import Link from "next/link";
 import { signOutEditor } from "@/app/sign-out/actions";
 import { contentConfig } from "@/lib/content-config";
 import { getEditorSession } from "@/lib/auth-session";
+import { isPublisher } from "@/lib/route-protection";
 
 type EditorialShellProps = {
   title: string;
@@ -19,6 +20,7 @@ export async function EditorialShell({
 }: EditorialShellProps) {
   const { session, email, login } = await getEditorSession();
   const identity = email ?? login;
+  const publisherAccess = isPublisher(email);
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f4efe6_0%,#ebe3d5_100%)] px-6 py-6 text-stone-900 sm:px-8 lg:px-10">
@@ -114,6 +116,14 @@ export async function EditorialShell({
               >
                 Publish
               </Link>
+              {publisherAccess ? (
+                <Link
+                  href="/publish/manage"
+                  className="rounded-full border border-lime-700/30 bg-lime-50 px-4 py-2 text-sm font-medium text-lime-800 transition hover:bg-lime-100"
+                >
+                  Manage publishing
+                </Link>
+              ) : null}
               {identity ? (
                 <p className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900">
                   Signed in as {identity}

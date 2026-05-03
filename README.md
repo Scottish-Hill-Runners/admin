@@ -57,7 +57,7 @@ For OAuth auth, configure one or more provider settings in `.env.local`:
 For email magic-link sign-in via [Resend](https://resend.com):
 
 - `RESEND_API_KEY` — API key from your Resend account
-- `EMAIL_FROM` — Sender address, e.g. `SHR Admin <no-reply@yourdomain.com>`
+- `EMAIL_FROM` — Sender address, e.g. `SHR Admin <no-reply@admin.scottishhillrunners.uk>`
   (defaults to `SHR Admin <no-reply@resend.dev>` for testing)
 
 For GitHub-backed writes to the content repository, configure one of these options:
