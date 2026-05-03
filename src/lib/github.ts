@@ -1013,6 +1013,20 @@ async function ensureStagingBranch(client: Octokit, repo: RepoRef): Promise<stri
   return stagingBranch;
 }
 
+async function hasBranch(client: Octokit, repo: RepoRef, branch: string): Promise<boolean> {
+  const refs = await requestGitHubGet<Array<{ ref: string }>>(
+    client,
+    "GET /repos/{owner}/{repo}/git/matching-refs/{ref}",
+    {
+      owner: repo.owner,
+      repo: repo.repo,
+      ref: `heads/${branch}`,
+    }
+  );
+
+  return refs.some((entry) => entry.ref === `refs/heads/${branch}`);
+}
+
 export type StagingStatus =
   | { state: "up-to-date" }
   | { state: "ahead"; aheadBy: number; behindBy: number; prUrl: string | null }
@@ -1026,6 +1040,15 @@ export async function getStagingStatus(): Promise<StagingStatus> {
 
   const repo = parseRepoSlug(contentConfig.repo);
 
+  try {
+    const stagingExists = await hasBranch(client, repo, contentConfig.stagingBranch);
+    if (!stagingExists) {
+      return { state: "up-to-date" };
+    }
+  } catch {
+    return { state: "error", message: "Could not check publishing status right now." };
+  }
+
   let comparison: { ahead_by: number; behind_by: number };
   try {
     comparison = await requestGitHubGet<{ ahead_by: number; behind_by: number }>(
@@ -1038,10 +1061,7 @@ export async function getStagingStatus(): Promise<StagingStatus> {
         head: contentConfig.stagingBranch,
       }
     );
-  } catch (error) {
-    if (getErrorStatus(error) === 404) {
-      return { state: "up-to-date" };
-    }
+  } catch {
     return { state: "error", message: "Could not check publishing status right now." };
   }
 
