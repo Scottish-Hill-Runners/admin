@@ -124,7 +124,7 @@ function buildNewsPrefillUrl(raceId: string, year: string, csvText: string): str
   const title = `${raceTitle} ${year} results`;
   const excerpt = buildLeadSentence(raceTitle, leadDate, winners);
   const content = [
-    `## ${raceTitle} ${year} results`,
+    `## [${raceTitle} ${year} results](/races/${encodeURIComponent(raceId)})`,
     "",
     buildLeadSentence(raceTitle, leadDate, winners),
     winners.nonBinary
