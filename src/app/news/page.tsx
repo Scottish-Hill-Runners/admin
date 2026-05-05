@@ -40,20 +40,15 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
       title="News posts"
       description="Select a news post to edit, or create a new one."
     >
-      <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
-        <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-6">
-          Add new post
-        </h2>
-        <NewsEditorForm
-          initialValues={prefill}
-          suggestedDate={suggestedDate}
-          suggestedSlugSuffix={suggestedSlugSuffix}
-        />
-      </section>
-      <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
-        <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900">
-          Recent posts
-        </h2>
+      <details className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 [&::-webkit-details-marker]:hidden">
+          <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900">
+            Recent posts
+          </h2>
+          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-600">
+            Expand or collapse
+          </span>
+        </summary>
         {newsItems.length > 0 ? (
           <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {newsItems.map((item) => {
@@ -75,6 +70,16 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
         ) : (
           <p className="mt-5 text-sm text-stone-500">No news posts found.</p>
         )}
+      </details>
+      <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
+        <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-6">
+          Add new post
+        </h2>
+        <NewsEditorForm
+          initialValues={prefill}
+          suggestedDate={suggestedDate}
+          suggestedSlugSuffix={suggestedSlugSuffix}
+        />
       </section>
     </EditorialShell>
   );
