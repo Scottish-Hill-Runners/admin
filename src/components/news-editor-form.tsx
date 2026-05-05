@@ -35,15 +35,10 @@ type NewsEditorFormProps = {
     slug: string;
     data: NewsFrontmatter;
     content: string;
+    fromResults?: boolean;
   } | null;
   suggestedDate?: string;
   suggestedSlugSuffix?: string;
-  prefillValues?: {
-    title?: string;
-    excerpt?: string;
-    content?: string;
-    fromResults?: boolean;
-  };
 };
 
 function getInitialSlugSuffix(initialValues: NewsEditorFormProps["initialValues"]): string {
@@ -92,8 +87,7 @@ function InputField({
 export function NewsEditorForm({
   initialValues,
   suggestedDate,
-  suggestedSlugSuffix,
-  prefillValues,
+  suggestedSlugSuffix
 }: NewsEditorFormProps) {
   const [state, formAction, isPending] = useActionState(saveNewsDraft, initialState);
   const [isResuggesting, startResuggesting] = useTransition();
@@ -110,9 +104,9 @@ export function NewsEditorForm({
   const [suffixHint, setSuffixHint] = useState<string | null>(null);
   const slugValue = buildNewsSlug(dateValue, slugSuffixValue);
   const yearValue = dateValue.slice(0, 4);
-  const initialTitleValue = initialValues?.data.title ?? prefillValues?.title ?? "";
-  const initialExcerptValue = initialValues?.data.excerpt ?? prefillValues?.excerpt ?? "";
-  const initialContentValue = initialValues?.content ?? prefillValues?.content ?? "";
+  const initialTitleValue = initialValues?.data.title ?? "";
+  const initialExcerptValue = initialValues?.data.excerpt ?? "";
+  const initialContentValue = initialValues?.content ?? "";
 
   const requestSuffixSuggestion = (nextDate: string) => {
     if (isEditingExistingItem || !isIsoNewsDate(nextDate)) {
@@ -173,7 +167,7 @@ export function NewsEditorForm({
           {!initialValues ? (
             <div className="space-y-1 text-sm leading-6 text-stone-600">
               <p>Suggested ending is based on existing news files plus pending drafts.</p>
-              {prefillValues?.fromResults ? (
+              {initialValues?.fromResults ? (
                 <p className="text-amber-700">
                   Template generated from race results. Review and adjust before submitting the news draft.
                 </p>

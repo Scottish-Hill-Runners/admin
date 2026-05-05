@@ -20,10 +20,10 @@ export type RaceWinnerSummary = {
 };
 
 export type RaceResultsWinnerSummary = {
-  overall: RaceWinnerSummary | null;
   male: RaceWinnerSummary | null;
   female: RaceWinnerSummary | null;
   nonBinary: RaceWinnerSummary | null;
+  nEntrants: number;
 };
 
 export function splitCsvLine(line: string): string[] {
@@ -145,7 +145,6 @@ function toWinnerSummary(candidate: WinnerCandidate | null): RaceWinnerSummary |
 export function extractRaceResultsWinnerSummary(csvText: string): RaceResultsWinnerSummary {
   const { rows } = parseCsv(csvText);
 
-  let overallWinner: WinnerCandidate | null = null;
   let maleWinner: WinnerCandidate | null = null;
   let femaleWinner: WinnerCandidate | null = null;
   let nonBinaryWinner: WinnerCandidate | null = null;
@@ -172,10 +171,6 @@ export function extractRaceResultsWinnerSummary(csvText: string): RaceResultsWin
       time,
     };
 
-    if (!overallWinner || candidate.position < overallWinner.position) {
-      overallWinner = candidate;
-    }
-
     const categoryGroup = parseCategoryGroup(findValue(row, CATEGORY_KEYS));
     if (!categoryGroup) {
       continue;
@@ -200,10 +195,10 @@ export function extractRaceResultsWinnerSummary(csvText: string): RaceResultsWin
   }
 
   return {
-    overall: toWinnerSummary(overallWinner),
     male: toWinnerSummary(maleWinner),
     female: toWinnerSummary(femaleWinner),
     nonBinary: toWinnerSummary(nonBinaryWinner),
+    nEntrants: rows.length,
   };
 }
 

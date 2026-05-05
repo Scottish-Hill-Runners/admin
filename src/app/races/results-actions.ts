@@ -27,7 +27,7 @@ function formatWinnerLine(label: string, winner: { name: string; club: string; t
   }
 
   const clubPart = winner.club ? ` (${winner.club})` : "";
-  return `- ${label}: ${winner.name}${clubPart} - ${winner.time}`;
+  return `- ${label}: [${winner.name}](/runner?name=${encodeURIComponent(winner.name)})${clubPart} - ${winner.time}`;
 }
 
 function formatWinnerInline(winner: { name: string; club: string; time: string }) {
@@ -109,10 +109,6 @@ function buildLeadSentence(
     return `Wins for ${formatWinnerInline(winners.male)} and ${formatWinnerInline(winners.female)} at the ${raceTitle} race on ${leadDate}.`;
   }
 
-  if (winners.overall) {
-    return `Win for ${formatWinnerInline(winners.overall)} at the ${raceTitle} race on ${leadDate}.`;
-  }
-
   return `Results are now available for the ${raceTitle} race on ${leadDate}.`;
 }
 
@@ -131,11 +127,13 @@ function buildNewsPrefillUrl(raceId: string, year: string, csvText: string): str
       ? `Top non-binary finisher: ${formatWinnerInline(winners.nonBinary)}.`
       : "",
     "",
-    "### Winners",
-    formatWinnerLine("Overall", winners.overall),
+    "### Highlights", 
     formatWinnerLine("Men", winners.male),
     formatWinnerLine("Women", winners.female),
     formatWinnerLine("Non-binary", winners.nonBinary),
+    `- ${winners.nEntrants} entrants in total.`,
+    "",
+    `Full results can be found [here](/races/${encodeURIComponent(raceId)}).`,
     "",
     "Congratulations to all runners and thanks to organisers and volunteers.",
   ].join("\n");

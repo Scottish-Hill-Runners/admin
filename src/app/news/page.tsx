@@ -23,12 +23,15 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
     ? requestedDate
     : new Date().toISOString().slice(0, 10);
   const suggestedSlugSuffix = await suggestNewsSlugSuffixForDate(suggestedDate);
-  const fromResults = params?.fromResults === "1";
   const prefill = {
-    title: String(params?.prefillTitle ?? "").trim(),
-    excerpt: String(params?.prefillExcerpt ?? "").trim(),
+    slug: `${suggestedDate}-${suggestedSlugSuffix}`,
+    data: {
+      date: suggestedDate,
+      title: String(params?.prefillTitle ?? "").trim(),
+      excerpt: String(params?.prefillExcerpt ?? "").trim()
+    },
     content: String(params?.prefillContent ?? "").trim(),
-    fromResults,
+    fromResults: params?.fromResults === "1"
   };
 
   return (
@@ -37,6 +40,16 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
       title="News posts"
       description="Select a news post to edit, or create a new one."
     >
+      <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
+        <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-6">
+          Add new post
+        </h2>
+        <NewsEditorForm
+          initialValues={prefill}
+          suggestedDate={suggestedDate}
+          suggestedSlugSuffix={suggestedSlugSuffix}
+        />
+      </section>
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900">
           Recent posts
@@ -62,18 +75,6 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
         ) : (
           <p className="mt-5 text-sm text-stone-500">No news posts found.</p>
         )}
-      </section>
-
-      <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
-        <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-6">
-          Add new post
-        </h2>
-        <NewsEditorForm
-          initialValues={null}
-          suggestedDate={suggestedDate}
-          suggestedSlugSuffix={suggestedSlugSuffix}
-          prefillValues={prefill}
-        />
       </section>
     </EditorialShell>
   );
