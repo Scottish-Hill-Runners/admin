@@ -24,6 +24,7 @@ export type WidgetFormValues = z.infer<typeof widgetFormSchema>;
 ```
 
 Checklist:
+
 - [ ] Schema named `${type}FormSchema`
 - [ ] Type named `${Type}FormValues`
 - [ ] ID field has appropriate regex (see lib.instructions.md for options)
@@ -53,6 +54,7 @@ export type WidgetListItem = {
 ```
 
 Checklist:
+
 - [ ] No Zod imports — TypeScript types only
 - [ ] `${Type}Frontmatter`, `${Type}FormData`, `${Type}ListItem` all present
 
@@ -87,6 +89,7 @@ export async function getWidgetDraft(widgetId: string): Promise<WidgetFormData |
 ```
 
 Checklist:
+
 - [ ] `toSafeRepoPathSegment()` on all user-supplied IDs — return `null` on failure
 - [ ] `normalizeRepoPath()` on all constructed paths
 - [ ] List function returns `[]` (not throws) when GitHub client is unavailable
@@ -147,10 +150,10 @@ export function WidgetEditorForm({ initialValues }: { initialValues?: WidgetForm
             <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">File</p>
             <p className="mt-1 text-sm text-stone-300">widgets/…/index.md</p>
           </div>
-          {/* minor correction */}
+          {/* skip review */}
           <label className="flex items-center gap-3 text-sm text-stone-300">
             <input type="checkbox" name="autoMerge" className="size-4 rounded" />
-            Minor correction — publish automatically
+            Minor correction — skip review
           </label>
           <button
             type="submit"
@@ -174,6 +177,7 @@ export function WidgetEditorForm({ initialValues }: { initialValues?: WidgetForm
 ```
 
 Checklist:
+
 - [ ] `"use client"` first line
 - [ ] `useActionState` — all three values destructured
 - [ ] `initialState` defined outside component
@@ -181,7 +185,7 @@ Checklist:
 - [ ] Dark panel / markdown errors: `text-red-200` (handled by `MarkdownEditorField`)
 - [ ] Button: `disabled={isPending}`, correct Tailwind classes
 - [ ] Status: fallback `"Nothing submitted yet."`
-- [ ] Minor correction checkbox: `name="autoMerge"`
+- [ ] Skip review checkbox: `name="autoMerge"`
 
 ---
 

@@ -219,7 +219,7 @@ export function AssetManifestEditorForm({
             <div className="flex flex-col items-end gap-3">
               <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-600">
                 <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-stone-700" />
-                Publish automatically
+                Skip review
               </label>
               <button
                 type="submit"
@@ -349,7 +349,7 @@ export function AssetManifestEditorForm({
             <div className="flex flex-col items-end gap-3">
               <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-400">
                 <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-500" />
-                Publish automatically
+                Skip review
               </label>
               <button
                 type="submit"

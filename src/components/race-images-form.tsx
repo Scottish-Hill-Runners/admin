@@ -182,7 +182,7 @@ export function RaceImagesForm({
                   name="autoMerge"
                   className="h-4 w-4 accent-stone-700"
                 />
-                Publish automatically
+                Skip review
               </label>
               <button
                 type="submit"
@@ -333,7 +333,7 @@ export function RaceImagesForm({
                   name="autoMerge"
                   className="h-4 w-4 accent-lime-500"
                 />
-                Publish automatically
+                tomatically
               </label>
               <button
                 type="submit"

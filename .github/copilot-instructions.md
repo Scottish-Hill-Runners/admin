@@ -12,7 +12,7 @@ This app is used by non-technical community editors. All user-facing text must u
 - "PR" / "pull request" → "draft", "submission", or "publication request"
 - "branch" / "merge" / "commit" → omit or use "save", "update"
 - "staging" → "draft updates"
-- "auto-merge" → "publish automatically"
+- "auto-merge" → "skip review"
 - "frontmatter" → "saved fields"
 - "markdown" → "text formatting" or omit
 - "YAML" / `.yaml` filenames → omit; use plain descriptions ("document list", "image list")

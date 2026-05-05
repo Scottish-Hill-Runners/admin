@@ -131,14 +131,14 @@ type ExampleEditorFormProps = {
 };
 ```
 
-## Minor Correction Checkbox
+## Skip Review Checkbox
 
 When editors can flag a change as minor (triggering auto-merge), add this inside the dark panel:
 
 ```jsx
 <label className="flex items-center gap-3 text-sm text-stone-300">
   <input type="checkbox" name="autoMerge" className="size-4 rounded" />
-  Minor correction — publish automatically
+  Minor correction — skip review
 </label>
 ```
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, useTransition, type ChangeEvent } from "react";
+import { useEffect, useId, useRef, useState, useTransition, type ChangeEvent } from "react";
 import { useActionState } from "react";
 import {
   saveNewsDraft,
@@ -8,6 +8,7 @@ import {
   type NewsActionState,
 } from "@/app/news/actions";
 import { MarkdownEditorField } from "@/components/markdown-editor-field";
+import { useFormDraft } from "@/lib/use-form-draft";
 import type { NewsFrontmatter } from "@/lib/content-types";
 import {
   buildNewsSlug,
@@ -93,10 +94,13 @@ export function NewsEditorForm({
   const [isResuggesting, startResuggesting] = useTransition();
   const buttonLabel = isPending ? "Saving..." : "Save draft";
   const formId = useId();
-  const initialDateValue = initialValues?.data.date ?? suggestedDate ?? "";
-  const initialSuffixValue = initialValues
-    ? getInitialSlugSuffix(initialValues)
-    : (suggestedSlugSuffix ?? "");
+  const storageKey = initialValues ? `draft:news:${initialValues.slug}` : "draft:news:new";
+  const { formRef, restoredDraft, onFormInput, onMarkdownChange, clearDraft } =
+    useFormDraft(storageKey);
+
+  const initialDateValue = restoredDraft?.date ?? initialValues?.data.date ?? suggestedDate ?? "";
+  const initialSuffixValue = restoredDraft?.slugSuffix ??
+    (initialValues ? getInitialSlugSuffix(initialValues) : (suggestedSlugSuffix ?? ""));
   const isEditingExistingItem = Boolean(initialValues);
   const suggestionRequestCounter = useRef(0);
   const [dateValue, setDateValue] = useState(initialDateValue);
@@ -104,9 +108,13 @@ export function NewsEditorForm({
   const [suffixHint, setSuffixHint] = useState<string | null>(null);
   const slugValue = buildNewsSlug(dateValue, slugSuffixValue);
   const yearValue = dateValue.slice(0, 4);
-  const initialTitleValue = initialValues?.data.title ?? "";
-  const initialExcerptValue = initialValues?.data.excerpt ?? "";
-  const initialContentValue = initialValues?.content ?? "";
+  const initialTitleValue = restoredDraft?.title ?? initialValues?.data.title ?? "";
+  const initialExcerptValue = restoredDraft?.excerpt ?? initialValues?.data.excerpt ?? "";
+  const initialContentValue = restoredDraft?.content ?? initialValues?.content ?? "";
+
+  useEffect(() => {
+    if (state.status === "success") clearDraft();
+  }, [state.status, clearDraft]);
 
   const requestSuffixSuggestion = (nextDate: string) => {
     if (isEditingExistingItem || !isIsoNewsDate(nextDate)) {
@@ -129,7 +137,7 @@ export function NewsEditorForm({
   };
 
   return (
-    <form action={formAction} className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+    <form ref={formRef} action={formAction} onInput={onFormInput} className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <div className="grid gap-5">
           <InputField
@@ -192,6 +200,23 @@ export function NewsEditorForm({
       </section>
 
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-[#172119] p-6 text-stone-50 shadow-[0_22px_55px_rgba(23,33,25,0.24)]">
+        {restoredDraft && (
+          <div className="mb-4 rounded-2xl border border-lime-400/30 bg-lime-900/30 px-4 py-3">
+            <p className="text-sm text-lime-200">
+              Your unsaved changes have been restored.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  clearDraft();
+                  window.location.reload();
+                }}
+                className="underline hover:text-white"
+              >
+                Start fresh
+              </button>
+            </p>
+          </div>
+        )}
         <div className="mb-5 rounded-2xl border border-white/10 bg-black/15 p-4">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
             Draft summary
@@ -214,6 +239,7 @@ export function NewsEditorForm({
           label="Body"
           placeholder="(Write the article body here)"
           defaultValue={initialContentValue}
+          onChange={onMarkdownChange("content")}
           errors={state.fieldErrors?.content}
         />
 
@@ -228,8 +254,8 @@ export function NewsEditorForm({
           </div>
           <div className="flex flex-col items-end gap-3">
             <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
-              <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
-              Minor correction — publish automatically
+              <input type="checkbox" name="autoMerge" defaultChecked={restoredDraft?.autoMerge === "on"} className="h-4 w-4 accent-lime-400" />
+              Minor correction — skip review
             </label>
             <button
               type="submit"

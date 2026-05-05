@@ -443,7 +443,7 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
             className="mt-0.5 h-4 w-4 rounded accent-amber-600"
           />
           <span className="text-sm text-stone-700">
-            <span className="font-semibold">Publish automatically</span> — marks this upload so it can go live automatically once checks pass.
+            <span className="font-semibold">Skip review</span> — marks this upload so it can go live automatically once checks pass.
           </span>
         </label>
       </section>

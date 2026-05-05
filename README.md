@@ -85,9 +85,9 @@ All editor saves create a pull request against the **staging** branch, not `main
 2. The admin opens a PR from a short-lived `shr-admin/<type>-<id>` branch targeting `staging`.
 3. Changes accumulate on `staging` until a publisher is ready to deploy.
 
-### Minor correction — auto-merge
+### Skip review — auto-merge
 
-For low-risk edits (typo fixes, small metadata corrections) the editor can tick **Minor correction — auto-merge** before submitting. This adds the `auto-merge` label to the PR. A GitHub Actions workflow in the content repository detects the label and squash-merges the PR into `staging` automatically without requiring manual approval.
+For low-risk edits (typo fixes, small metadata corrections) the editor can tick **Skip review — auto-merge** before submitting. This adds the `auto-merge` label to the PR. A GitHub Actions workflow in the content repository detects the label and squash-merges the PR into `staging` automatically without requiring manual approval.
 
 Prerequisites in `Scottish-Hill-Runners/contents`:
 

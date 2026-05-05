@@ -65,7 +65,7 @@ export function PublishForm({ stagingStatus }: PublishFormProps) {
           </p>
           <ul className="mt-3 space-y-2 text-sm leading-6 text-stone-200">
             <li>Every save creates a review request for draft updates.</li>
-            <li>&quot;Publish automatically&quot; requests can be approved without extra steps.</li>
+            <li>&quot;Skip review&quot; requests can be approved without extra steps.</li>
             <li>This page sends one publication request for admin review and approval.</li>
             <li>Each approved request triggers one site rebuild.</li>
           </ul>

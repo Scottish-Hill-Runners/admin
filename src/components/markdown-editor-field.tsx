@@ -10,6 +10,7 @@ type MarkdownEditorFieldProps = {
   placeholder?: string;
   defaultValue?: string;
   errors?: string[];
+  onChange?: (value: string) => void;
 };
 
 const MdxEditorClient = dynamic(
@@ -31,6 +32,7 @@ export function MarkdownEditorField({
   placeholder,
   defaultValue,
   errors,
+  onChange,
 }: MarkdownEditorFieldProps) {
   const labelId = `${id}-label`;
   const inputRef = useRef<HTMLInputElement>(null);
@@ -40,7 +42,8 @@ export function MarkdownEditorField({
     if (inputRef.current) {
       inputRef.current.value = newValue;
     }
-  }, []);
+    onChange?.(newValue);
+  }, [onChange]);
 
   return (
     <div className="block space-y-2" aria-labelledby={labelId}>

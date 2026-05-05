@@ -1,9 +1,10 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useActionState } from "react";
 import { saveRaceDraft, type RaceActionState } from "@/app/races/actions";
 import { MarkdownEditorField } from "@/components/markdown-editor-field";
+import { useFormDraft } from "@/lib/use-form-draft";
 import type { RaceInfoFormData } from "@/lib/content-types";
 
 const initialState: RaceActionState = {
@@ -46,13 +47,24 @@ function InputField({ label, name, placeholder, defaultValue, errors }: InputPro
 export function RaceEditorForm({ initialValues }: RaceEditorFormProps) {
   const [state, formAction, isPending] = useActionState(saveRaceDraft, initialState);
   const formId = useId();
-  const [raceIdValue, setRaceIdValue] = useState(initialValues?.raceId ?? "RaceId");
+  const storageKey = initialValues ? `draft:race:${initialValues.raceId}` : "draft:race:new";
+  const { formRef, restoredDraft, onFormInput, onMarkdownChange, clearDraft } =
+    useFormDraft(storageKey);
+  const [raceIdValue, setRaceIdValue] = useState(
+    restoredDraft?.raceId?.trim() || initialValues?.raceId || "RaceId",
+  );
+
+  useEffect(() => {
+    if (state.status === "success") clearDraft();
+  }, [state.status, clearDraft]);
 
   return (
     <form
+      ref={formRef}
       action={formAction}
       className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]"
       onInput={(event) => {
+        onFormInput();
         const target = event.target as HTMLInputElement | HTMLTextAreaElement;
         if (target.name === "raceId") {
           setRaceIdValue(target.value.trim() || "RaceId");
@@ -65,74 +77,91 @@ export function RaceEditorForm({ initialValues }: RaceEditorFormProps) {
             label="Race ID"
             name="raceId"
             placeholder="(enter a unique identifier, e.g. 'Carnethy5')"
-            defaultValue={initialValues?.raceId}
+            defaultValue={restoredDraft?.raceId ?? initialValues?.raceId}
             errors={state.fieldErrors?.raceId}
           />
           <InputField
             label="Title"
             name="title"
             placeholder="(enter the race title, e.g. 'Carnethy 5')"
-            defaultValue={initialValues?.title}
+            defaultValue={restoredDraft?.title ?? initialValues?.title}
             errors={state.fieldErrors?.title}
           />
           <InputField
             label="Venue"
             name="venue"
             placeholder="(enter the venue, e.g. 'Pentland Hills, Scotland')"
-            defaultValue={initialValues?.venue}
+            defaultValue={restoredDraft?.venue ?? initialValues?.venue}
             errors={state.fieldErrors?.venue}
           />
           <InputField
             label="Distance (km)"
             name="distance"
-            defaultValue={initialValues?.distance}
+            defaultValue={restoredDraft?.distance ?? initialValues?.distance}
             errors={state.fieldErrors?.distance}
           />
           <InputField
             label="Climb (metres)"
             name="climb"
-            defaultValue={initialValues?.climb}
+            defaultValue={restoredDraft?.climb ?? initialValues?.climb}
             errors={state.fieldErrors?.climb}
           />
           <InputField
             label="Website"
             name="web"
             placeholder="https://example.org/race"
-            defaultValue={initialValues?.web}
+            defaultValue={restoredDraft?.web ?? initialValues?.web}
             errors={state.fieldErrors?.web}
           />
           <InputField
             label="Male record"
             name="maleRecord"
             placeholder="00:52:10"
-            defaultValue={initialValues?.maleRecord}
+            defaultValue={restoredDraft?.maleRecord ?? initialValues?.maleRecord}
             errors={state.fieldErrors?.maleRecord}
           />
           <InputField
             label="Female record"
             name="femaleRecord"
             placeholder="01:01:42"
-            defaultValue={initialValues?.femaleRecord}
+            defaultValue={restoredDraft?.femaleRecord ?? initialValues?.femaleRecord}
             errors={state.fieldErrors?.femaleRecord}
           />
           <InputField
             label="Non-binary record"
             name="nonBinaryRecord"
             placeholder="01:05:00"
-            defaultValue={initialValues?.nonBinaryRecord}
+            defaultValue={restoredDraft?.nonBinaryRecord ?? initialValues?.nonBinaryRecord}
             errors={state.fieldErrors?.nonBinaryRecord}
           />
           <InputField
             label="Organiser"
             name="organiser"
             placeholder="Race organiser name"
-            defaultValue={initialValues?.organiser}
+            defaultValue={restoredDraft?.organiser ?? initialValues?.organiser}
             errors={state.fieldErrors?.organiser}
           />
         </div>
       </section>
 
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-[#172119] p-6 text-stone-50 shadow-[0_22px_55px_rgba(23,33,25,0.24)]">
+        {restoredDraft && (
+          <div className="mb-4 rounded-2xl border border-lime-400/30 bg-lime-900/30 px-4 py-3">
+            <p className="text-sm text-lime-200">
+              Your unsaved changes have been restored.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  clearDraft();
+                  window.location.reload();
+                }}
+                className="underline hover:text-white"
+              >
+                Start fresh
+              </button>
+            </p>
+          </div>
+        )}
         <div className="mb-5 rounded-2xl border border-white/10 bg-black/15 p-4">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
             Draft summary
@@ -152,7 +181,8 @@ export function RaceEditorForm({ initialValues }: RaceEditorFormProps) {
           name="content"
           label="Race description"
           placeholder="Describe the route, terrain, logistics, and entry details in plain text formatting."
-          defaultValue={initialValues?.content}
+          defaultValue={restoredDraft?.content ?? initialValues?.content}
+          onChange={onMarkdownChange("content")}
           errors={state.fieldErrors?.content}
         />
 
@@ -167,8 +197,8 @@ export function RaceEditorForm({ initialValues }: RaceEditorFormProps) {
           </div>
           <div className="flex flex-col items-end gap-3">
             <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
-              <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
-              Minor correction — publish automatically
+              <input type="checkbox" name="autoMerge" defaultChecked={restoredDraft?.autoMerge === "on"} className="h-4 w-4 accent-lime-400" />
+              Minor correction — skip review
             </label>
             <button
               type="submit"

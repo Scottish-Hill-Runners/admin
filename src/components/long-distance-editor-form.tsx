@@ -1,9 +1,10 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useActionState } from "react";
 import { saveLongDistanceDraft, type LongDistanceActionState } from "@/app/long-distance/actions";
 import { MarkdownEditorField } from "@/components/markdown-editor-field";
+import { useFormDraft } from "@/lib/use-form-draft";
 import type { LongDistanceFormData } from "@/lib/content-types";
 
 const initialState: LongDistanceActionState = { status: "idle" };
@@ -44,13 +45,24 @@ function InputField({ label, name, placeholder, defaultValue, errors }: InputPro
 export function LongDistanceEditorForm({ initialValues }: LongDistanceEditorFormProps) {
   const [state, formAction, isPending] = useActionState(saveLongDistanceDraft, initialState);
   const formId = useId();
-  const [slugValue, setSlugValue] = useState(initialValues?.slug ?? "slug");
+  const storageKey = initialValues ? `draft:long-distance:${initialValues.slug}` : "draft:long-distance:new";
+  const { formRef, restoredDraft, onFormInput, onMarkdownChange, clearDraft } =
+    useFormDraft(storageKey);
+  const [slugValue, setSlugValue] = useState(
+    restoredDraft?.slug?.trim() || initialValues?.slug || "slug",
+  );
+
+  useEffect(() => {
+    if (state.status === "success") clearDraft();
+  }, [state.status, clearDraft]);
 
   return (
     <form
+      ref={formRef}
       action={formAction}
       className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]"
       onInput={(event) => {
+        onFormInput();
         const target = event.target as HTMLInputElement;
         if (target.name === "slug") {
           setSlugValue(target.value.trim() || "slug");
@@ -63,20 +75,37 @@ export function LongDistanceEditorForm({ initialValues }: LongDistanceEditorForm
             label="URL ending"
             name="slug"
             placeholder="(lowercase, hyphens — e.g. 'charlie-ramsays-round')"
-            defaultValue={initialValues?.slug}
+            defaultValue={restoredDraft?.slug ?? initialValues?.slug}
             errors={state.fieldErrors?.slug}
           />
           <InputField
             label="Title"
             name="title"
-            placeholder="(e.g. 'Charlie Ramsay's Round')"
-            defaultValue={initialValues?.title}
+            placeholder="(e.g. 'Charlie Ramsay’s Round')"
+            defaultValue={restoredDraft?.title ?? initialValues?.title}
             errors={state.fieldErrors?.title}
           />
         </div>
       </section>
 
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-[#172119] p-6 text-stone-50 shadow-[0_22px_55px_rgba(23,33,25,0.24)]">
+        {restoredDraft && (
+          <div className="mb-4 rounded-2xl border border-lime-400/30 bg-lime-900/30 px-4 py-3">
+            <p className="text-sm text-lime-200">
+              Your unsaved changes have been restored.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  clearDraft();
+                  window.location.reload();
+                }}
+                className="underline hover:text-white"
+              >
+                Start fresh
+              </button>
+            </p>
+          </div>
+        )}
         <div className="mb-5 rounded-2xl border border-white/10 bg-black/15 p-4">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
             Draft summary
@@ -93,7 +122,8 @@ export function LongDistanceEditorForm({ initialValues }: LongDistanceEditorForm
           name="content"
           label="Report"
           placeholder="Route description, history, records, and supporting information in plain text formatting."
-          defaultValue={initialValues?.content}
+          defaultValue={restoredDraft?.content ?? initialValues?.content}
+          onChange={onMarkdownChange("content")}
           errors={state.fieldErrors?.content}
         />
 
@@ -108,8 +138,8 @@ export function LongDistanceEditorForm({ initialValues }: LongDistanceEditorForm
           </div>
           <div className="flex flex-col items-end gap-3">
             <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
-              <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
-              Minor correction — publish automatically
+              <input type="checkbox" name="autoMerge" defaultChecked={restoredDraft?.autoMerge === "on"} className="h-4 w-4 accent-lime-400" />
+              Minor correction — skip review
             </label>
             <button
               type="submit"

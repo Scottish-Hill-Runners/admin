@@ -1,9 +1,10 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useActionState } from "react";
 import { saveInfoDraft, type InfoActionState } from "@/app/info/actions";
 import { MarkdownEditorField } from "@/components/markdown-editor-field";
+import { useFormDraft } from "@/lib/use-form-draft";
 import type { InfoFormData } from "@/lib/content-types";
 
 const initialState: InfoActionState = { status: "idle" };
@@ -15,11 +16,20 @@ type InfoEditorFormProps = {
 export function InfoEditorForm({ initialValues }: InfoEditorFormProps) {
   const [state, formAction, isPending] = useActionState(saveInfoDraft, initialState);
   const formId = useId();
-  const [filePath, setFilePath] = useState(initialValues?.filePath ?? "index.md");
+  const storageKey = initialValues ? `draft:info:${initialValues.filePath}` : "draft:info:new";
+  const { formRef, restoredDraft, onFormInput, onMarkdownChange, clearDraft } =
+    useFormDraft(storageKey);
+  const [filePath, setFilePath] = useState(
+    restoredDraft?.filePath || initialValues?.filePath || "index.md",
+  );
   const displayPath = filePath.trim() ? `info/${filePath.trim()}` : "info/index.md";
 
+  useEffect(() => {
+    if (state.status === "success") clearDraft();
+  }, [state.status, clearDraft]);
+
   return (
-    <form action={formAction} className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+    <form ref={formRef} action={formAction} onInput={onFormInput} className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <label className="block space-y-2">
           <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
@@ -28,7 +38,7 @@ export function InfoEditorForm({ initialValues }: InfoEditorFormProps) {
           <input
             name="filePath"
             placeholder="(e.g. joining/index.md or joining/juniors.md)"
-            defaultValue={initialValues?.filePath ?? "index.md"}
+            defaultValue={restoredDraft?.filePath ?? initialValues?.filePath ?? "index.md"}
             onInput={(event) => setFilePath((event.target as HTMLInputElement).value)}
             className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
           />
@@ -50,6 +60,23 @@ export function InfoEditorForm({ initialValues }: InfoEditorFormProps) {
       </section>
 
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-[#172119] p-6 text-stone-50 shadow-[0_22px_55px_rgba(23,33,25,0.24)]">
+        {restoredDraft && (
+          <div className="mb-4 rounded-2xl border border-lime-400/30 bg-lime-900/30 px-4 py-3">
+            <p className="text-sm text-lime-200">
+              Your unsaved changes have been restored.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  clearDraft();
+                  window.location.reload();
+                }}
+                className="underline hover:text-white"
+              >
+                Start fresh
+              </button>
+            </p>
+          </div>
+        )}
         <div className="mb-5 rounded-2xl border border-white/10 bg-black/15 p-4">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
             Draft summary
@@ -66,7 +93,8 @@ export function InfoEditorForm({ initialValues }: InfoEditorFormProps) {
           name="content"
           label="Page content"
           placeholder="Write the page content."
-          defaultValue={initialValues?.content}
+          defaultValue={restoredDraft?.content ?? initialValues?.content}
+          onChange={onMarkdownChange("content")}
           errors={state.fieldErrors?.content}
         />
 
@@ -81,8 +109,8 @@ export function InfoEditorForm({ initialValues }: InfoEditorFormProps) {
           </div>
           <div className="flex flex-col items-end gap-3">
             <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
-              <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
-              Minor correction — publish automatically
+              <input type="checkbox" name="autoMerge" defaultChecked={restoredDraft?.autoMerge === "on"} className="h-4 w-4 accent-lime-400" />
+              Minor correction — skip review
             </label>
             <button
               type="submit"

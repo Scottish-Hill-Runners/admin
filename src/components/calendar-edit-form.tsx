@@ -174,7 +174,7 @@ export function CalendarEditForm({
             <div className="flex flex-col items-end gap-3">
               <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
                 <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
-                Minor correction — publish automatically
+                Minor correction — skip review
               </label>
               <button
                 type="submit"
