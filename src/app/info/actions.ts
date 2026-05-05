@@ -13,10 +13,6 @@ export type InfoActionState = {
   fieldErrors?: Partial<Record<keyof InfoFormValues, string[]>>;
 };
 
-const initialState: InfoActionState = {
-  status: "idle",
-};
-
 function toInfoFilePath(filePath: string): string {
   return `info/${filePath.trim()}`;
 }
@@ -26,9 +22,11 @@ function toBranchSuffix(filePath: string): string {
 }
 
 export async function saveInfoDraft(
-  _previousState: InfoActionState = initialState,
+  previousState: InfoActionState,
   formData: FormData
 ): Promise<InfoActionState> {
+  void previousState;
+
   const editorSession = await requireEditorAccess();
   const author = buildPrAuthor(editorSession);
 

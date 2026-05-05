@@ -11,9 +11,12 @@ export type PublishActionState = {
 };
 
 export async function publishStagingAction(
-  _previousState: PublishActionState,
-  _formData: FormData
+  previousState: PublishActionState,
+  formData: FormData
 ): Promise<PublishActionState> {
+  void previousState;
+  void formData;
+
   const editorSession = await requireEditorAccess();
   const author = buildPrAuthor(editorSession);
 

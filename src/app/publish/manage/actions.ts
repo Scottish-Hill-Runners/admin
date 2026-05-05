@@ -10,9 +10,11 @@ export type ManageActionState = {
 };
 
 export async function acceptSubmissionAction(
-  _previousState: ManageActionState,
+  previousState: ManageActionState,
   formData: FormData
 ): Promise<ManageActionState> {
+  void previousState;
+
   await requirePublisherAccess();
 
   const raw = formData.get("pullNumber");
@@ -36,9 +38,12 @@ export async function acceptSubmissionAction(
 }
 
 export async function publishLiveAction(
-  _previousState: ManageActionState,
-  _formData: FormData
+  previousState: ManageActionState,
+  formData: FormData
 ): Promise<ManageActionState> {
+  void previousState;
+  void formData;
+
   const session = await requirePublisherAccess();
   const author = buildPrAuthor(session);
 
