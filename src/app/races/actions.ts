@@ -18,12 +18,14 @@ function buildRaceMarkdown(values: RaceFormValues): string {
     title: values.title,
     venue: values.venue,
     distance: values.distance,
-    climb: values.climb || undefined,
-    maleRecord: values.maleRecord || undefined,
-    femaleRecord: values.femaleRecord || undefined,
-    nonBinaryRecord: values.nonBinaryRecord || undefined,
-    web: values.web || undefined,
-    organiser: values.organiser || undefined,
+    ...(values.climb ? { climb: values.climb } : {}),
+    ...(values.maleRecord ? { maleRecord: values.maleRecord } : {}),
+    ...(values.femaleRecord ? { femaleRecord: values.femaleRecord } : {}),
+    ...(values.nonBinaryRecord
+      ? { nonBinaryRecord: values.nonBinaryRecord }
+      : {}),
+    ...(values.web ? { web: values.web } : {}),
+    ...(values.organiser ? { organiser: values.organiser } : {}),
   });
 }
 
