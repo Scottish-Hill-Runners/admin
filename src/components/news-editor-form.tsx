@@ -167,11 +167,6 @@ export function NewsEditorForm({
           {!initialValues ? (
             <div className="space-y-1 text-sm leading-6 text-stone-600">
               <p>Suggested ending is based on existing news files plus pending drafts.</p>
-              {initialValues?.fromResults ? (
-                <p className="text-amber-700">
-                  Template generated from race results. Review and adjust before submitting the news draft.
-                </p>
-              ) : null}
               <p>{isResuggesting ? "Refreshing suffix suggestion for this date..." : ""}</p>
               {suffixHint ? <p className="text-amber-700">{suffixHint}</p> : null}
             </div>
