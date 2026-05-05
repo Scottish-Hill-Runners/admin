@@ -90,7 +90,8 @@ export function useFormDraft(storageKey: string) {
    * will capture the latest markdown on the next scheduled save.
    */
   const onMarkdownChange = useCallback(
-    () => () => {
+    (fieldName: string) => () => {
+      void fieldName;
       setIsDirty(true);
       scheduleSave();
     },
