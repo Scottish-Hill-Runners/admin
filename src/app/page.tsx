@@ -49,9 +49,7 @@ export default function Home() {
               </Link>
             </div>
           </div>
-        </section>
 
-        <section className="grid gap-5 lg:grid-cols-2">
           <div>
             <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Assets</h3>
             <div className="space-y-3">
@@ -113,23 +111,6 @@ export default function Home() {
           </div>
 
           <div>
-            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Championships</h3>
-            <div className="space-y-3">
-              <div className="block rounded-[1.5rem] border border-stone-900/10 bg-white/50 p-6 opacity-50 cursor-not-allowed">
-                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
-                  Edit existing
-                </p>
-                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Edit championship
-                </h4>
-                <p className="mt-3 text-base leading-6 text-stone-600">
-                  Load an existing championship and update its schedule or description.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div>
             <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Clubs</h3>
             <div className="space-y-3">
               <Link
@@ -168,29 +149,7 @@ export default function Home() {
               </Link>
             </div>
           </div>
-
-          <div>
-            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Info</h3>
-            <div className="space-y-3">
-              <Link
-                href="/info"
-                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
-              >
-                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
-                  Browse &amp; manage
-                </p>
-                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
-                  Info pages
-                </h4>
-                <p className="mt-3 text-base leading-6 text-stone-600">
-                  Browse info markdown files, edit existing content, or create a new file.
-                </p>
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-5 lg:grid-cols-2">
+          
           <div>
             <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">Publish</h3>
             <div className="space-y-3">
