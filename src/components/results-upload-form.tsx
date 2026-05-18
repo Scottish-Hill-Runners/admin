@@ -38,13 +38,23 @@ function normalizeYearValue(value: string): string {
   return value.trim().replace(/\*+$/g, "");
 }
 
-function buildEffectiveYear(value: string, shortenedRoute: boolean): string {
-  const normalized = normalizeYearValue(value);
+function parseInitialYear(raw: string): { year: string; suffix: string; shortenedRoute: boolean } {
+  const isShortenedRoute = raw.trim().endsWith("*");
+  const noStar = raw.trim().replace(/\*+$/g, "");
+  const match = noStar.match(/^(\d{4})(?:-([A-Za-z0-9]+))?$/);
+  if (match) {
+    return { year: match[1], suffix: match[2] ?? "", shortenedRoute: isShortenedRoute };
+  }
+  return { year: noStar, suffix: "", shortenedRoute: isShortenedRoute };
+}
+
+function buildEffectiveYear(year: string, suffix: string, shortenedRoute: boolean): string {
+  const normalized = normalizeYearValue(year);
   if (!normalized) {
     return "";
   }
-
-  return shortenedRoute ? `${normalized}*` : normalized;
+  const withSuffix = suffix ? `${normalized}-${suffix}` : normalized;
+  return shortenedRoute ? `${withSuffix}*` : withSuffix;
 }
 
 function parsePreview(csvText: string) {
@@ -87,9 +97,11 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
   const buttonLabel = isPending ? "Checking..." : "Save results draft";
   const currentYear = new Date().getFullYear().toString();
   const initialYear = fixedYear ?? initialValues?.year ?? currentYear;
+  const { year: initialYearBase, suffix: initialYearSuffix, shortenedRoute: initialShortenedRoute } = parseInitialYear(initialYear);
   const [raceIdValue, setRaceIdValue] = useState(fixedRaceId ?? initialValues?.raceId ?? "");
-  const [yearValue, setYearValue] = useState(normalizeYearValue(initialYear));
-  const [shortenedRoute, setShortenedRoute] = useState(initialYear.trim().endsWith("*"));
+  const [yearValue, setYearValue] = useState(initialYearBase);
+  const [yearSuffix, setYearSuffix] = useState(initialYearSuffix);
+  const [shortenedRoute, setShortenedRoute] = useState(initialShortenedRoute);
   const [csvTextValue, setCsvTextValue] = useState(
     normalizeLineEndings(initialValues?.csvText ?? "")
   );
@@ -159,8 +171,8 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
     return map;
   }, [liveIssues]);
   const effectiveYearValue = useMemo(
-    () => buildEffectiveYear(yearValue, shortenedRoute),
-    [shortenedRoute, yearValue]
+    () => buildEffectiveYear(yearValue, yearSuffix, shortenedRoute),
+    [yearValue, yearSuffix, shortenedRoute]
   );
 
   useEffect(() => {
@@ -183,9 +195,18 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
     setCsvTextValue(normalizeLineEndings(text));
 
     if (!fixedYear && (!yearValue || yearValue === currentYear)) {
-      const yearFromName = file.name.replace(/\.csv$/i, "");
-      setYearValue(normalizeYearValue(yearFromName || currentYear));
-      setShortenedRoute(yearFromName.trim().endsWith("*"));
+      const rawFromName = file.name.replace(/\.csv$/i, "").trim();
+      const isShortenedRoute = rawFromName.endsWith("*");
+      const noStar = rawFromName.replace(/\*+$/g, "");
+      const match = noStar.match(/^(\d{4})(?:-([A-Za-z0-9]+))?$/);
+      if (match) {
+        setYearValue(match[1]);
+        setYearSuffix(match[2] ?? "");
+      } else {
+        setYearValue(noStar || currentYear);
+        setYearSuffix("");
+      }
+      setShortenedRoute(isShortenedRoute);
     }
   }
 
@@ -245,23 +266,42 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
               </div>
             </>
           ) : (
-            <label className="block space-y-2">
-              <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
-                Results filename
-              </span>
-              <input
-                name="resultsYear"
-                value={yearValue}
-                onChange={(event) => setYearValue(normalizeYearValue(event.target.value))}
-                placeholder={currentYear}
-                className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
-              />
-              {state.fieldErrors?.year?.map((error) => (
-                <p key={error} className="text-sm text-red-700">
-                  {error}
+            <>
+              <input type="hidden" name="resultsYear" value={effectiveYearValue} />
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
+                  Year
+                </span>
+                <input
+                  value={yearValue}
+                  onChange={(event) => setYearValue(normalizeYearValue(event.target.value))}
+                  placeholder={currentYear}
+                  className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
+                />
+                {state.fieldErrors?.year?.map((error) => (
+                  <p key={error} className="text-sm text-red-700">
+                    {error}
+                  </p>
+                ))}
+              </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
+                  Number / variant{" "}
+                  <span className="font-normal normal-case tracking-normal text-stone-400">(optional)</span>
+                </span>
+                <input
+                  value={yearSuffix}
+                  onChange={(event) =>
+                    setYearSuffix(event.target.value.trim().replace(/[^A-Za-z0-9]/g, ""))
+                  }
+                  placeholder="e.g. 1, 2, s, w"
+                  className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
+                />
+                <p className="text-sm leading-5 text-stone-500">
+                  For races held multiple times per year — e.g. <strong>1</strong> or <strong>2</strong> for Krunce, <strong>s</strong> or <strong>w</strong> for summer/winter editions.
                 </p>
-              ))}
-            </label>
+              </label>
+            </>
           )}
           <label className="flex items-start gap-3 rounded-xl border border-stone-900/10 bg-stone-50 px-4 py-3">
             <input
