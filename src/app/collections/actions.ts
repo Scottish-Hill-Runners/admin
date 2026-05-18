@@ -22,8 +22,10 @@ import {
   stringifyRaceImagesYaml,
 } from "@/lib/collections-yaml";
 import { requireEditorAccess } from "@/lib/route-protection";
-import { optimizeUploadedImage } from "@/lib/image-upload";
+import { computeHashFilename, optimizeUploadedImage } from "@/lib/image-upload";
 import { toSafeUploadFilename, type UploadMode } from "@/lib/upload-filename";
+import { RACE_IMAGE_LICENSE_IDS } from "@/lib/race-image-licenses";
+import { type RaceImageItem } from "@/lib/collections-schema";
 
 const MAX_UPLOAD_FILES = 20;
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
@@ -78,6 +80,18 @@ export type AssetMetadataState = {
     imagePaths?: string[];
     heroImagePath?: string[];
   };
+};
+
+export type RaceImagesSubmitState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  fieldErrors?: {
+    imageFiles?: string[];
+    raceId?: string[];
+    imagesMetadata?: string[];
+  };
+  prUrl?: string;
+  prNumber?: number;
 };
 
 type UploadOptions = {
@@ -219,16 +233,22 @@ async function uploadAssetFilesDraft(
   try {
     const files = await Promise.all(
       assetFiles.map(async (file) => {
-        const safeName = toSafeUploadFilename(file.name, options.mode) as string;
-        const bytes =
-          options.mode === "image"
-            ? (await optimizeUploadedImage({
-                file,
-                maxBytes: MAX_UPLOAD_SIZE_BYTES,
-                preset: "racePhoto",
-              })).buffer
-            : Buffer.from(await file.arrayBuffer());
+        if (options.mode === "image") {
+          const optimized = await optimizeUploadedImage({
+            file,
+            maxBytes: MAX_UPLOAD_SIZE_BYTES,
+            preset: "racePhoto",
+          });
+          const hashName = computeHashFilename(optimized.buffer, optimized.outputExtension);
+          return {
+            path: `${options.targetFolder}/${hashName}`,
+            content: optimized.buffer.toString("base64"),
+            encoding: "base64" as const,
+          };
+        }
 
+        const safeName = toSafeUploadFilename(file.name, options.mode) as string;
+        const bytes = Buffer.from(await file.arrayBuffer());
         return {
           path: `${options.targetFolder}/${safeName}`,
           content: bytes.toString("base64"),
@@ -804,6 +824,265 @@ export async function saveRaceImagesDraft(
         error instanceof Error
           ? error.message
           : "Failed to save this draft.",
+    };
+  }
+}
+
+const perImageMetadataSchema = z.object({
+  caption: z.string().max(300).optional(),
+  year: z.number().int().min(1900).max(2099).optional(),
+  tags: z.array(z.string().min(1).max(80)).max(10).default([]),
+  license: z.enum(RACE_IMAGE_LICENSE_IDS, {
+    error: "Select a valid licence for this image.",
+  }),
+  copyrightConfirmed: z.boolean(),
+  individualsConsent: z.boolean(),
+});
+
+export async function submitRaceImagesDraft(
+  _previousState: RaceImagesSubmitState,
+  formData: FormData
+): Promise<RaceImagesSubmitState> {
+  await requireEditorAccess();
+
+  const raceId = String(formData.get("raceId") ?? "").trim();
+  if (!raceId) {
+    return {
+      status: "error",
+      message: "Race is required.",
+      fieldErrors: { raceId: ["Race is required."] },
+    };
+  }
+
+  const imageFiles = formData
+    .getAll("imageFiles")
+    .filter((v): v is File => v instanceof File && v.size > 0);
+
+  if (imageFiles.length === 0) {
+    return {
+      status: "error",
+      message: "Select at least one image before submitting.",
+      fieldErrors: { imageFiles: ["Select at least one image before submitting."] },
+    };
+  }
+
+  if (imageFiles.length > MAX_UPLOAD_FILES) {
+    return {
+      status: "error",
+      message: `Upload up to ${MAX_UPLOAD_FILES} files per submission.`,
+      fieldErrors: { imageFiles: [`Too many files selected (${imageFiles.length}).`] },
+    };
+  }
+
+  const fileErrors: string[] = [];
+  for (const file of imageFiles) {
+    if (!allowedImageMimeTypes.has(file.type)) {
+      fileErrors.push(`${file.name}: unsupported file type (${file.type || "unknown"}).`);
+    }
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      fileErrors.push(`${file.name}: file is larger than 10 MB.`);
+    }
+  }
+  if (fileErrors.length > 0) {
+    return {
+      status: "error",
+      message: "Fix the upload issues and try again.",
+      fieldErrors: { imageFiles: fileErrors },
+    };
+  }
+
+  const rawMetadata = String(formData.get("imagesMetadata") ?? "");
+  let parsedMetadataArray: unknown;
+  try {
+    parsedMetadataArray = JSON.parse(rawMetadata);
+  } catch {
+    return {
+      status: "error",
+      message: "Invalid image metadata.",
+      fieldErrors: { imagesMetadata: ["Invalid image metadata."] },
+    };
+  }
+
+  const metadataResult = z.array(perImageMetadataSchema).safeParse(parsedMetadataArray);
+  if (!metadataResult.success) {
+    const issues = metadataResult.error.issues.map((i) => i.message);
+    return {
+      status: "error",
+      message: "Please fix the highlighted fields before continuing.",
+      fieldErrors: { imagesMetadata: issues },
+    };
+  }
+
+  const metadataArray = metadataResult.data;
+  if (metadataArray.length !== imageFiles.length) {
+    return {
+      status: "error",
+      message: "Image metadata count does not match file count.",
+      fieldErrors: { imagesMetadata: ["Image metadata count does not match file count."] },
+    };
+  }
+
+  const uncheckedIndices = metadataArray
+    .map((m, i) => (!m.copyrightConfirmed ? i + 1 : null))
+    .filter((i): i is number => i !== null);
+  if (uncheckedIndices.length > 0) {
+    return {
+      status: "error",
+      message: "Confirm you have the rights for all images before submitting.",
+      fieldErrors: {
+        imagesMetadata: [
+          `Copyright must be confirmed for image${uncheckedIndices.length === 1 ? "" : "s"} ${uncheckedIndices.join(", ")}.`,
+        ],
+      },
+    };
+  }
+
+  const heroIndexRaw = String(formData.get("heroIndex") ?? "");
+  const heroIndex = heroIndexRaw !== "" ? parseInt(heroIndexRaw, 10) : null;
+
+  try {
+    const processedImages = await Promise.all(
+      imageFiles.map(async (file, index) => {
+        const optimized = await optimizeUploadedImage({
+          file,
+          maxBytes: MAX_UPLOAD_SIZE_BYTES,
+          preset: "racePhoto",
+        });
+        const filename = computeHashFilename(optimized.buffer, optimized.outputExtension);
+        return {
+          file,
+          buffer: optimized.buffer,
+          path: `blobs/races/${raceId}/${filename}`,
+          metadata: metadataArray[index],
+          isHero: heroIndex === index,
+        };
+      })
+    );
+
+    const yamlText = await getRaceImagesDraft(raceId);
+    if (!yamlText) {
+      return {
+        status: "error",
+        message: `Could not load the image list for ${raceId} from the content store.`,
+      };
+    }
+
+    const validated = parseAndValidateRaceImagesYaml(yamlText);
+    if (!validated.data) {
+      return {
+        status: "error",
+        message: validated.error ?? `The image list for ${raceId} is not valid.`,
+      };
+    }
+
+    const nextData = structuredClone(validated.data);
+    const existingPaths = new Set([
+      ...nextData.hero.map((item) => item.path),
+      ...nextData.gallery.map((item) => item.path),
+    ]);
+
+    const duplicatePaths = processedImages
+      .filter((img) => existingPaths.has(img.path))
+      .map((img) => img.path);
+    if (duplicatePaths.length > 0) {
+      return {
+        status: "error",
+        message: "Some images already exist in this race's image list.",
+        fieldErrors: {
+          imageFiles: duplicatePaths.map((p) => `Already registered: ${p}`),
+        },
+      };
+    }
+
+    const heroImageExists = processedImages.some((img) => img.isHero);
+    if (heroImageExists && nextData.hero.length > 0) {
+      return {
+        status: "error",
+        message: "This race already has a hero image.",
+        fieldErrors: { imagesMetadata: ["A race can only have one hero image."] },
+      };
+    }
+
+    for (const img of processedImages) {
+      const { caption, year, tags, license } = img.metadata;
+      const entry: RaceImageItem = { path: img.path };
+      if (caption) entry.caption = caption;
+      if (year !== undefined) entry.year = year;
+      if (tags.length > 0) entry.tags = tags;
+      entry.license = license;
+
+      if (img.isHero) {
+        nextData.hero.push(entry);
+      } else {
+        nextData.gallery.push(entry);
+      }
+    }
+
+    const nextYamlText = stringifyRaceImagesYaml(nextData);
+    const finalValidated = parseAndValidateRaceImagesYaml(nextYamlText);
+    if (!finalValidated.data) {
+      return {
+        status: "error",
+        message: `The requested change produced invalid image list content for ${raceId}.`,
+      };
+    }
+
+    const editorSession = await getEditorSession();
+    const author = buildPrAuthor(editorSession);
+    const autoMerge = formData.get("autoMerge") === "on";
+
+    const consentRows = processedImages
+      .map((img, i) => {
+        const m = img.metadata;
+        const individuals = m.individualsConsent
+          ? "Depicts individuals — consent confirmed"
+          : "No identifiable individuals / not applicable";
+        return `| ${i + 1} | ${img.file.name} | ${m.license} | ✓ | ${individuals} |`;
+      })
+      .join("\n");
+
+    const prFiles = [
+      ...processedImages.map((img) => ({
+        path: img.path,
+        content: img.buffer.toString("base64"),
+        encoding: "base64" as const,
+      })),
+      {
+        path: `races/${raceId}/images.yaml`,
+        content: Buffer.from(stringifyRaceImagesYaml(finalValidated.data)).toString("base64"),
+        encoding: "base64" as const,
+      },
+    ];
+
+    const branchName = `shr-admin/race-images-${toSafeBranchSegment(raceId)}-${Date.now()}`;
+    const result = await createContentPullRequestWithFiles({
+      title: `Race images: upload and register for ${raceId}`,
+      files: prFiles,
+      commitMessage: `Upload and register ${processedImages.length} race image${processedImages.length === 1 ? "" : "s"} for ${raceId}`,
+      prTitle: `Race images: ${raceId} (${processedImages.length} new)`,
+      prBody:
+        `Race image upload by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
+        `**Race:** ${raceId}\n` +
+        `**Images uploaded:** ${processedImages.length}\n\n` +
+        `## Rights confirmation\n\n` +
+        `| # | Original filename | Licence | Copyright | Individuals |\n` +
+        `|---|---|---|---|---|\n` +
+        consentRows,
+      branchName,
+      author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
+    });
+
+    return {
+      status: "success",
+      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
+      prUrl: result.prUrl,
+      prNumber: result.prNumber,
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Failed to save this draft.",
     };
   }
 }

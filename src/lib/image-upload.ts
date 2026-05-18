@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import sharp from "sharp";
 
 type ImageOptimizationPreset = {
@@ -108,4 +109,9 @@ export async function optimizeUploadedImage({
   } catch {
     throw new Error("This image could not be processed. Please choose a different file.");
   }
+}
+
+export function computeHashFilename(buffer: Buffer, ext: string): string {
+  const hash = createHash("sha256").update(buffer).digest("hex");
+  return `${hash.slice(0, 12)}.${ext}`;
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RACE_IMAGE_LICENSE_IDS } from "@/lib/race-image-licenses";
 
 const blobPathSchema = z
   .string()
@@ -23,6 +24,10 @@ const documentAssetItemSchema = z.object({
 
 const raceImageItemSchema = z.object({
   path: blobPathSchema,
+  caption: z.string().max(300).optional(),
+  year: z.number().int().min(1900).max(2099).optional(),
+  tags: z.array(z.string().min(1).max(80)).max(10).optional(),
+  license: z.enum(RACE_IMAGE_LICENSE_IDS).optional(),
 });
 
 export const homepageImagesYamlSchema = z.object({
@@ -46,6 +51,7 @@ export type HomepageImagesYamlValues = z.infer<typeof homepageImagesYamlSchema>;
 export type DocumentsManifestYamlValues = z.infer<typeof documentsManifestYamlSchema>;
 export type CommitteePortraitsYamlValues = z.infer<typeof committeePortraitsYamlSchema>;
 export type RaceImagesYamlValues = z.infer<typeof raceImagesYamlSchema>;
+export type RaceImageItem = z.infer<typeof raceImageItemSchema>;
 
 export type ImageAssetItem = z.infer<typeof imageAssetItemSchema>;
 export type DocumentAssetItem = z.infer<typeof documentAssetItemSchema>;
