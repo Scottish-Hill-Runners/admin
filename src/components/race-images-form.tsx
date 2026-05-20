@@ -37,12 +37,23 @@ export function RaceImagesForm({
   const [state, formAction, isPending] = useActionState(submitRaceImagesDraft, initialState);
   const [cards, setCards] = useState<ImageCard[]>([]);
   const [heroIndex, setHeroIndex] = useState<number | null>(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
 
   useEffect(() => {
     return () => {
       for (const card of cards) URL.revokeObjectURL(card.previewUrl);
     };
   }, [cards]);
+
+  useEffect(() => {
+    if (state.status === "success") {
+      for (const card of cards) URL.revokeObjectURL(card.previewUrl);
+      setCards([]);
+      setHeroIndex(null);
+      setFileInputKey((k) => k + 1);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   function handleFilesChange(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -115,6 +126,7 @@ export function RaceImagesForm({
         <label className="block space-y-2">
           <span className="text-sm font-semibold text-stone-800">Image files</span>
           <input
+            key={fileInputKey}
             type="file"
             name="imageFiles"
             multiple

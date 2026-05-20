@@ -25,7 +25,7 @@ import { requireEditorAccess } from "@/lib/route-protection";
 import { computeHashFilename, optimizeUploadedImage } from "@/lib/image-upload";
 import { toSafeUploadFilename, type UploadMode } from "@/lib/upload-filename";
 import { RACE_IMAGE_LICENSE_IDS } from "@/lib/race-image-licenses";
-import { type RaceImageItem } from "@/lib/collections-schema";
+import { type RaceImageItem, type RaceImagesYamlValues } from "@/lib/collections-schema";
 
 const MAX_UPLOAD_FILES = 20;
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
@@ -742,14 +742,9 @@ export async function saveRaceImagesDraft(
   }
 
   const yamlText = await getRaceImagesDraft(raceId);
-  if (!yamlText) {
-    return {
-      status: "error",
-      message: `Could not load the image list for ${raceId} from the content store.`,
-    };
-  }
-
-  const validated = parseAndValidateRaceImagesYaml(yamlText);
+  const validated = yamlText
+    ? parseAndValidateRaceImagesYaml(yamlText)
+    : { data: { hero: [], gallery: [] } as RaceImagesYamlValues, error: null };
   if (!validated.data) {
     return {
       status: "error",
@@ -960,14 +955,9 @@ export async function submitRaceImagesDraft(
     );
 
     const yamlText = await getRaceImagesDraft(raceId);
-    if (!yamlText) {
-      return {
-        status: "error",
-        message: `Could not load the image list for ${raceId} from the content store.`,
-      };
-    }
-
-    const validated = parseAndValidateRaceImagesYaml(yamlText);
+    const validated = yamlText
+      ? parseAndValidateRaceImagesYaml(yamlText)
+      : { data: { hero: [], gallery: [] } as RaceImagesYamlValues, error: null };
     if (!validated.data) {
       return {
         status: "error",
