@@ -60,7 +60,7 @@ export function LongDistanceEditorForm({ initialValues }: LongDistanceEditorForm
     <form
       ref={formRef}
       action={formAction}
-      className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]"
+      className="grid gap-6"
       onInput={(event) => {
         onFormInput();
         const target = event.target as HTMLInputElement;

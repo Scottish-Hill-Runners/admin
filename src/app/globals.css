@@ -62,15 +62,22 @@ a {
   color: #6c6257;
 }
 
+.shr-mdxeditor-content p {
+  margin: 1.25em 0;
+  line-height: 1.75;
+  color: #44372a;
+}
+
 .shr-mdxeditor-content h1,
 .shr-mdxeditor-content h2,
 .shr-mdxeditor-content h3,
 .shr-mdxeditor-content h4 {
   font-family: var(--font-heading), serif;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
-  margin-top: 1rem;
-  margin-bottom: 0.5rem;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  color: #1f1810;
 }
 
 .shr-mdxeditor-content h1 {
@@ -102,9 +109,52 @@ a {
 
 .shr-mdxeditor-content li {
   margin: 0.25rem 0;
+  color: #44372a;
 }
 
 .shr-mdxeditor-content a {
-  color: #1f1810;
+  color: #2563eb;
   text-decoration: underline;
+}
+
+.shr-mdxeditor-content blockquote {
+  border-left: 4px solid #d8cfbe;
+  padding-left: 1rem;
+  font-style: italic;
+  color: #6c5c4c;
+  margin: 1.25em 0;
+}
+
+.shr-mdxeditor-content hr {
+  border: none;
+  border-top: 1px solid #d8cfbe;
+  margin: 2em 0;
+}
+
+.shr-mdxeditor-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  margin: 1.25em 0;
+}
+
+.shr-mdxeditor-content th,
+.shr-mdxeditor-content td {
+  border: 1px solid #d8cfbe;
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.shr-mdxeditor-content th {
+  background: #f7f1e6;
+  font-weight: 600;
+}
+
+.shr-mdxeditor-content code {
+  background: #f0ebe2;
+  border-radius: 0.25rem;
+  padding: 0.125em 0.35em;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.875em;
+  color: #1f1810;
 }

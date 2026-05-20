@@ -48,6 +48,11 @@ export function useFormDraft(storageKey: string) {
   const [isDirty, setIsDirty] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const hasMountedRef = useRef(false);
+
+  useEffect(() => {
+    hasMountedRef.current = true;
+  }, []);
 
   // Warn before tab close / hard refresh when there are unsaved changes
   useEffect(() => {
@@ -79,6 +84,7 @@ export function useFormDraft(storageKey: string) {
 
   /** Attach to the form's onInput event to trigger auto-save on every keystroke. */
   const onFormInput = useCallback(() => {
+    if (!hasMountedRef.current) return;
     setIsDirty(true);
     scheduleSave();
   }, [scheduleSave]);
@@ -92,6 +98,7 @@ export function useFormDraft(storageKey: string) {
   const onMarkdownChange = useCallback(
     (fieldName: string) => () => {
       void fieldName;
+      if (!hasMountedRef.current) return;
       setIsDirty(true);
       scheduleSave();
     },
