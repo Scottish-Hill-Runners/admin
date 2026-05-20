@@ -264,7 +264,7 @@ export function extractRaceResultsWinnerSummary(csvText: string): RaceResultsWin
     ...buildGenderCategoryWinners("Men", entrants.filter(e => e.genderGroup === "male")),
     ...buildGenderCategoryWinners("Women", entrants.filter(e => e.genderGroup === "female")),
     ...buildGenderCategoryWinners("Non-binary", entrants.filter(e => e.genderGroup === "nonBinary")),
-  ];
+  ].sort((a, b) => (parseTimeToSeconds(a.winner.time) ?? Infinity) - (parseTimeToSeconds(b.winner.time) ?? Infinity));
 
   return {
     male: toWinnerSummary(maleWinner),
