@@ -1164,6 +1164,35 @@ export async function publishStagingToLive(author?: { name: string; email: strin
   };
 }
 
+async function createBranchRef(
+  client: Octokit,
+  repo: { owner: string; repo: string },
+  branchName: string,
+  sha: string,
+): Promise<string> {
+  try {
+    await client.git.createRef({
+      owner: repo.owner,
+      repo: repo.repo,
+      ref: `refs/heads/${branchName}`,
+      sha,
+    });
+    return branchName;
+  } catch (err) {
+    if (typeof err === "object" && err !== null && "status" in err && (err as { status: number }).status === 422) {
+      const uniqueName = `${branchName}-${Date.now()}`;
+      await client.git.createRef({
+        owner: repo.owner,
+        repo: repo.repo,
+        ref: `refs/heads/${uniqueName}`,
+        sha,
+      });
+      return uniqueName;
+    }
+    throw err;
+  }
+}
+
 export async function createContentPullRequest({
   title,
   path,
@@ -1185,12 +1214,7 @@ export async function createContentPullRequest({
   const baseBranch = await ensureStagingBranch(client, repo);
   const baseSha = await getDefaultBranchSha(client, repo, baseBranch);
 
-  await client.git.createRef({
-    owner: repo.owner,
-    repo: repo.repo,
-    ref: `refs/heads/${branchName}`,
-    sha: baseSha,
-  });
+  const activeBranchName = await createBranchRef(client, repo, branchName, baseSha);
 
   const existingSha = await getExistingFileSha(client, repo, normalizedPath, baseBranch);
 
@@ -1198,7 +1222,7 @@ export async function createContentPullRequest({
     owner: repo.owner,
     repo: repo.repo,
     path: normalizedPath,
-    branch: branchName,
+    branch: activeBranchName,
     message: commitMessage,
     content: toBase64(content),
     sha: existingSha,
@@ -1214,7 +1238,7 @@ export async function createContentPullRequest({
     repo: repo.repo,
     title: prTitle,
     body: fullPrBody,
-    head: branchName,
+    head: activeBranchName,
     base: baseBranch,
   });
 
@@ -1234,7 +1258,7 @@ export async function createContentPullRequest({
   return {
     title,
     path,
-    branchName,
+    branchName: activeBranchName,
     prNumber: pullRequest.data.number,
     prUrl: pullRequest.data.html_url,
   };
@@ -1263,12 +1287,7 @@ export async function createContentPullRequestWithFiles({
   const baseBranch = await ensureStagingBranch(client, repo);
   const baseSha = await getDefaultBranchSha(client, repo, baseBranch);
 
-  await client.git.createRef({
-    owner: repo.owner,
-    repo: repo.repo,
-    ref: `refs/heads/${branchName}`,
-    sha: baseSha,
-  });
+  const activeBranchName = await createBranchRef(client, repo, branchName, baseSha);
 
   for (const file of files) {
     const normalizedPath = normalizeRepoPath(file.path);
@@ -1280,7 +1299,7 @@ export async function createContentPullRequestWithFiles({
       owner: repo.owner,
       repo: repo.repo,
       path: normalizedPath,
-      branch: branchName,
+      branch: activeBranchName,
       message: file.commitMessage ?? commitMessage,
       content,
       sha: existingSha,
@@ -1297,7 +1316,7 @@ export async function createContentPullRequestWithFiles({
     repo: repo.repo,
     title: prTitle,
     body: fullPrBody,
-    head: branchName,
+    head: activeBranchName,
     base: baseBranch,
   });
 
@@ -1316,7 +1335,7 @@ export async function createContentPullRequestWithFiles({
 
   return {
     title,
-    branchName,
+    branchName: activeBranchName,
     files: files.map((file) => normalizeRepoPath(file.path)),
     prNumber: pullRequest.data.number,
     prUrl: pullRequest.data.html_url,
