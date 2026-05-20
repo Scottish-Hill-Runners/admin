@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { contentConfig } from "@/lib/content-config";
-import { createContentPullRequest, listAllClubNameSet } from "@/lib/github";
+import { createContentPullRequest, listAllClubNameSet, getRaceDraft } from "@/lib/github";
 import {
   extractRaceResultsWinnerSummary,
   validateRaceResultsCsv,
@@ -21,18 +21,24 @@ export type ResultsUploadState = {
   redirectToNewsUrl?: string;
 };
 
-function formatWinnerLine(label: string, winner: { name: string; club: string; time: string } | null) {
-  if (!winner) {
-    return "";
-  }
+function formatTime(time: string): string {
+  return time.replace(/^00:/, "");
+}
 
+function formatWinnerLine(label: string, alsoWon: string[], winner: { name: string; club: string; time: string }) {
   const clubPart = winner.club ? ` (${winner.club})` : "";
-  return `- ${label}: [${winner.name}](/runner?name=${encodeURIComponent(winner.name)})${clubPart} - ${winner.time}`;
+  const alsoWonPart =
+    alsoWon.length === 0
+      ? ""
+      : alsoWon.length === 1
+        ? ` (also first ${alsoWon[0]})`
+        : ` (also first ${alsoWon.slice(0, -1).join(", ")} and ${alsoWon[alsoWon.length - 1]})`;
+  return `- ${label}${alsoWonPart}: [${winner.name}](/runner?name=${encodeURIComponent(winner.name)})${clubPart} - ${formatTime(winner.time)}`;
 }
 
 function formatWinnerInline(winner: { name: string; club: string; time: string }) {
   const clubPart = winner.club ? ` (${winner.club})` : "";
-  return `${winner.name}${clubPart} in ${winner.time}`;
+  return `${winner.name}${clubPart} in ${formatTime(winner.time)}`;
 }
 
 function toRaceTitle(raceId: string): string {
@@ -112,25 +118,24 @@ function buildLeadSentence(
   return `Results are now available for the ${raceTitle} race on ${leadDate}.`;
 }
 
-function buildNewsPrefillUrl(raceId: string, year: string, csvText: string): string {
+async function buildNewsPrefillUrl(raceId: string, year: string, csvText: string): Promise<string> {
   const today = new Date().toISOString().slice(0, 10);
   const winners = extractRaceResultsWinnerSummary(csvText);
-  const raceTitle = toRaceTitle(raceId);
+  const draft = await getRaceDraft(raceId);
+  const raceTitle = draft?.title || toRaceTitle(raceId);
   const leadDate = formatLeadDate(today);
   const title = `${raceTitle} ${year} results`;
   const excerpt = buildLeadSentence(raceTitle, leadDate, winners);
   const content = [
     `## [${raceTitle} ${year} results](/races/${encodeURIComponent(raceId)})`,
     "",
-    buildLeadSentence(raceTitle, leadDate, winners),
+    excerpt,
     winners.nonBinary
       ? `Top non-binary finisher: ${formatWinnerInline(winners.nonBinary)}.`
       : "",
     "",
-    "### Highlights", 
-    formatWinnerLine("Men", winners.male),
-    formatWinnerLine("Women", winners.female),
-    formatWinnerLine("Non-binary", winners.nonBinary),
+    "### Highlights",
+    ...winners.categoryWinners.map((cw) => formatWinnerLine(cw.label, cw.alsoWon, cw.winner)),
     `- ${winners.nEntrants} entrants in total.`,
     "",
     `Full results can be found [here](/races/${encodeURIComponent(raceId)}).`,
@@ -238,7 +243,7 @@ export async function saveResultsDraft(
         : `Saved draft #${result.prNumber}: ${result.prUrl}`,
       issues: issueMessages,
       redirectToNewsUrl: shouldPrepareNewsTemplate
-        ? buildNewsPrefillUrl(values.raceId, values.year, values.csvText)
+        ? await buildNewsPrefillUrl(values.raceId, values.year, values.csvText)
         : undefined,
     };
   } catch (error) {

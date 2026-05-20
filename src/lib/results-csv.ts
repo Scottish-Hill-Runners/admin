@@ -19,10 +19,17 @@ export type RaceWinnerSummary = {
   time: string;
 };
 
+export type CategoryWinnerEntry = {
+  label: string;
+  alsoWon: string[];
+  winner: RaceWinnerSummary;
+};
+
 export type RaceResultsWinnerSummary = {
   male: RaceWinnerSummary | null;
   female: RaceWinnerSummary | null;
   nonBinary: RaceWinnerSummary | null;
+  categoryWinners: CategoryWinnerEntry[];
   nEntrants: number;
 };
 
@@ -93,6 +100,13 @@ function validateTime(time: string) {
   return /(\d?\d)[:.h](\d\d)(?:[:.m](\d\d))?/i.test(time);
 }
 
+const DEFAULT_CATEGORY_AGE = 30;
+
+function parseCategoryAge(category: string): number {
+  const match = /(\d+)$/.exec(category.trim());
+  return match ? Number.parseInt(match[1], 10) : DEFAULT_CATEGORY_AGE;
+}
+
 function parseTimeToSeconds(time: string): number | null {
   const match = /^(\d{1,2})[:.h](\d{2})(?:[:.m](\d{2}))?$/i.exec(time.trim());
   if (!match) {
@@ -142,62 +156,120 @@ function toWinnerSummary(candidate: WinnerCandidate | null): RaceWinnerSummary |
   };
 }
 
+type EntrantRow = WinnerCandidate & {
+  category: string;
+  genderGroup: "male" | "female" | "nonBinary";
+};
+
+function buildGenderCategoryWinners(
+  defaultLabel: string,
+  entrants: EntrantRow[]
+): CategoryWinnerEntry[] {
+  if (entrants.length === 0) return [];
+
+  const categoryWinnerMap = new Map<string, WinnerCandidate>();
+  for (const e of entrants) {
+    const cat = e.category.trim().toUpperCase() || "_";
+    const existing = categoryWinnerMap.get(cat);
+    if (!existing || e.position < existing.position) {
+      categoryWinnerMap.set(cat, { position: e.position, name: e.name, club: e.club, time: e.time });
+    }
+  }
+
+  let overallWinnerCat = "";
+  let overallWinner: WinnerCandidate | null = null;
+  for (const [cat, candidate] of categoryWinnerMap) {
+    if (!overallWinner || candidate.position < overallWinner.position) {
+      overallWinner = candidate;
+      overallWinnerCat = cat;
+    }
+  }
+
+  if (!overallWinner) return [];
+
+  const overallAge = parseCategoryAge(overallWinnerCat);
+  const minAge = Math.min(overallAge, DEFAULT_CATEGORY_AGE);
+  const maxAge = Math.max(overallAge, DEFAULT_CATEGORY_AGE);
+
+  const absorbedNonDefault: string[] = [];
+  const remainingVeteran: string[] = [];
+  const remainingJunior: string[] = [];
+
+  for (const cat of categoryWinnerMap.keys()) {
+    const age = parseCategoryAge(cat);
+    if (age >= minAge && age <= maxAge) {
+      if (age !== DEFAULT_CATEGORY_AGE) absorbedNonDefault.push(cat);
+    } else if (age > DEFAULT_CATEGORY_AGE) {
+      remainingVeteran.push(cat);
+    } else {
+      remainingJunior.push(cat);
+    }
+  }
+
+  absorbedNonDefault.sort((a, b) => parseCategoryAge(a) - parseCategoryAge(b));
+  remainingVeteran.sort((a, b) => parseCategoryAge(a) - parseCategoryAge(b));
+  // oldest junior first (M23 before M18 before M16)
+  remainingJunior.sort((a, b) => parseCategoryAge(b) - parseCategoryAge(a));
+
+  const result: CategoryWinnerEntry[] = [
+    { label: defaultLabel, alsoWon: absorbedNonDefault, winner: toWinnerSummary(overallWinner)! },
+  ];
+
+  for (const cat of remainingVeteran) {
+    result.push({ label: cat, alsoWon: [], winner: toWinnerSummary(categoryWinnerMap.get(cat)!)! });
+  }
+  for (const cat of remainingJunior) {
+    result.push({ label: cat, alsoWon: [], winner: toWinnerSummary(categoryWinnerMap.get(cat)!)! });
+  }
+
+  return result;
+}
+
 export function extractRaceResultsWinnerSummary(csvText: string): RaceResultsWinnerSummary {
   const { rows } = parseCsv(csvText);
 
-  let maleWinner: WinnerCandidate | null = null;
-  let femaleWinner: WinnerCandidate | null = null;
-  let nonBinaryWinner: WinnerCandidate | null = null;
+  const entrants: EntrantRow[] = [];
 
   for (const row of rows) {
     const positionRaw = findValue(row, POSITION_KEYS);
     const position = Number.parseInt(positionRaw, 10);
-    if (!Number.isFinite(position)) {
-      continue;
-    }
+    if (!Number.isFinite(position)) continue;
 
     const name =
       findValue(row, NAME_KEYS) ||
       `${findValue(row, FIRST_NAME_KEYS)} ${findValue(row, SURNAME_KEYS)}`.trim();
     const time = findValue(row, TIME_KEYS);
-    if (!name || !time) {
-      continue;
-    }
+    if (!name || !time) continue;
 
-    const candidate: WinnerCandidate = {
-      position,
-      name,
-      club: findValue(row, CLUB_KEYS),
-      time,
-    };
+    const category = findValue(row, CATEGORY_KEYS);
+    const genderGroup = parseCategoryGroup(category);
+    if (!genderGroup) continue;
 
-    const categoryGroup = parseCategoryGroup(findValue(row, CATEGORY_KEYS));
-    if (!categoryGroup) {
-      continue;
-    }
-
-    if (categoryGroup === "male" && (!maleWinner || candidate.position < maleWinner.position)) {
-      maleWinner = candidate;
-      continue;
-    }
-
-    if (categoryGroup === "female" && (!femaleWinner || candidate.position < femaleWinner.position)) {
-      femaleWinner = candidate;
-      continue;
-    }
-
-    if (
-      categoryGroup === "nonBinary" &&
-      (!nonBinaryWinner || candidate.position < nonBinaryWinner.position)
-    ) {
-      nonBinaryWinner = candidate;
-    }
+    entrants.push({ position, name, club: findValue(row, CLUB_KEYS), time, category, genderGroup });
   }
+
+  let maleWinner: WinnerCandidate | null = null;
+  let femaleWinner: WinnerCandidate | null = null;
+  let nonBinaryWinner: WinnerCandidate | null = null;
+
+  for (const e of entrants) {
+    const c: WinnerCandidate = { position: e.position, name: e.name, club: e.club, time: e.time };
+    if (e.genderGroup === "male" && (!maleWinner || e.position < maleWinner.position)) maleWinner = c;
+    if (e.genderGroup === "female" && (!femaleWinner || e.position < femaleWinner.position)) femaleWinner = c;
+    if (e.genderGroup === "nonBinary" && (!nonBinaryWinner || e.position < nonBinaryWinner.position)) nonBinaryWinner = c;
+  }
+
+  const categoryWinners = [
+    ...buildGenderCategoryWinners("Men", entrants.filter(e => e.genderGroup === "male")),
+    ...buildGenderCategoryWinners("Women", entrants.filter(e => e.genderGroup === "female")),
+    ...buildGenderCategoryWinners("Non-binary", entrants.filter(e => e.genderGroup === "nonBinary")),
+  ];
 
   return {
     male: toWinnerSummary(maleWinner),
     female: toWinnerSummary(femaleWinner),
     nonBinary: toWinnerSummary(nonBinaryWinner),
+    categoryWinners,
     nEntrants: rows.length,
   };
 }
