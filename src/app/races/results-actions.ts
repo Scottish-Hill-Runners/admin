@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { contentConfig } from "@/lib/content-config";
-import { createContentPullRequest, listAllClubNameSet, getRaceDraft } from "@/lib/github";
+import { createContentPullRequest, listAllClubNameSet } from "@/lib/github";
 import {
   extractRaceResultsWinnerSummary,
   validateRaceResultsCsv,
@@ -118,11 +118,10 @@ function buildLeadSentence(
   return `Results are now available for the ${raceTitle} race on ${leadDate}.`;
 }
 
-async function buildNewsPrefillUrl(raceId: string, year: string, csvText: string): Promise<string> {
+function buildNewsPrefillUrl(raceId: string, year: string, csvText: string): string {
   const today = new Date().toISOString().slice(0, 10);
   const winners = extractRaceResultsWinnerSummary(csvText);
-  const draft = await getRaceDraft(raceId);
-  const raceTitle = draft?.title || toRaceTitle(raceId);
+  const raceTitle = toRaceTitle(raceId);
   const leadDate = formatLeadDate(today);
   const title = `${raceTitle} ${year} results`;
   const excerpt = buildLeadSentence(raceTitle, leadDate, winners);
@@ -243,7 +242,7 @@ export async function saveResultsDraft(
         : `Saved draft #${result.prNumber}: ${result.prUrl}`,
       issues: issueMessages,
       redirectToNewsUrl: shouldPrepareNewsTemplate
-        ? await buildNewsPrefillUrl(values.raceId, values.year, values.csvText)
+        ? buildNewsPrefillUrl(values.raceId, values.year, values.csvText)
         : undefined,
     };
   } catch (error) {

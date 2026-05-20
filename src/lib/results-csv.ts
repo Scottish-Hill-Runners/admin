@@ -207,18 +207,19 @@ function buildGenderCategoryWinners(
   }
 
   absorbedNonDefault.sort((a, b) => parseCategoryAge(a) - parseCategoryAge(b));
-  remainingVeteran.sort((a, b) => parseCategoryAge(a) - parseCategoryAge(b));
-  // oldest junior first (M23 before M18 before M16)
-  remainingJunior.sort((a, b) => parseCategoryAge(b) - parseCategoryAge(a));
+
+  const remaining = [...remainingVeteran, ...remainingJunior];
+  remaining.sort((a, b) => {
+    const timeA = parseTimeToSeconds(categoryWinnerMap.get(a)!.time) ?? Infinity;
+    const timeB = parseTimeToSeconds(categoryWinnerMap.get(b)!.time) ?? Infinity;
+    return timeA - timeB;
+  });
 
   const result: CategoryWinnerEntry[] = [
     { label: defaultLabel, alsoWon: absorbedNonDefault, winner: toWinnerSummary(overallWinner)! },
   ];
 
-  for (const cat of remainingVeteran) {
-    result.push({ label: cat, alsoWon: [], winner: toWinnerSummary(categoryWinnerMap.get(cat)!)! });
-  }
-  for (const cat of remainingJunior) {
+  for (const cat of remaining) {
     result.push({ label: cat, alsoWon: [], winner: toWinnerSummary(categoryWinnerMap.get(cat)!)! });
   }
 
