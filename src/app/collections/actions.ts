@@ -768,16 +768,6 @@ export async function saveRaceImagesDraft(
     };
   }
 
-  if (heroImagePath && nextData.hero.length > 0) {
-    return {
-      status: "error",
-      message: "This race already has a hero image.",
-      fieldErrors: {
-        heroImagePath: ["A race can only have one hero image."],
-      },
-    };
-  }
-
   for (const path of raceImagePaths) {
     const entry = { path };
     if (heroImagePath && path === heroImagePath) {
@@ -981,15 +971,6 @@ export async function submitRaceImagesDraft(
         fieldErrors: {
           imageFiles: duplicatePaths.map((p) => `Already registered: ${p}`),
         },
-      };
-    }
-
-    const heroImageExists = processedImages.some((img) => img.isHero);
-    if (heroImageExists && nextData.hero.length > 0) {
-      return {
-        status: "error",
-        message: "This race already has a hero image.",
-        fieldErrors: { imagesMetadata: ["A race can only have one hero image."] },
       };
     }
 

@@ -43,7 +43,7 @@ export const committeePortraitsYamlSchema = z.object({
 });
 
 export const raceImagesYamlSchema = z.object({
-  hero: z.array(raceImageItemSchema).max(1, "A race can only have one hero image."),
+  hero: z.array(raceImageItemSchema),
   gallery: z.array(raceImageItemSchema),
 });
 
