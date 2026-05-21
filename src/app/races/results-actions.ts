@@ -126,7 +126,7 @@ function buildNewsPrefillUrl(raceId: string, year: string, csvText: string): str
   const title = `${raceTitle} ${year} results`;
   const excerpt = buildLeadSentence(raceTitle, leadDate, winners);
   const content = [
-    `## [${raceTitle} ${year} results](/races/${encodeURIComponent(raceId)})`,
+    `## [${raceTitle} ${year} results](/races/${encodeURIComponent(raceId)}?year=${encodeURIComponent(year)})`,
     "",
     excerpt,
     winners.nonBinary
@@ -137,7 +137,7 @@ function buildNewsPrefillUrl(raceId: string, year: string, csvText: string): str
     ...winners.categoryWinners.map((cw) => formatWinnerLine(cw.label, cw.alsoWon, cw.winner)),
     `- ${winners.nEntrants} entrants in total.`,
     "",
-    `Full results can be found [here](/races/${encodeURIComponent(raceId)}).`,
+    `Full results can be found [here](/races/${encodeURIComponent(raceId)}?year=${encodeURIComponent(year)}).`,
     "",
     "Congratulations to all runners and thanks to organisers and volunteers.",
   ].join("\n");
