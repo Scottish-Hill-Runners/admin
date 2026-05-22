@@ -7,10 +7,16 @@ import {
   useRef,
   useState,
 } from "react";
+import dynamic from "next/dynamic";
 import {
   uploadRaceAssets,
   type RaceAssetsActionState,
 } from "@/app/race-assets/actions";
+
+const CheckpointMapEditor = dynamic(
+  () => import("@/components/checkpoint-map-editor"),
+  { ssr: false },
+);
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +30,7 @@ type RaceAssetsUploadFormProps = {
 type GpxInfo = {
   fileName: string;
   pointCount: number;
+  text: string;
 };
 
 type ImageInfo = {
@@ -32,18 +39,6 @@ type ImageInfo = {
 };
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-
-const EPSILON_LABELS: Record<number, string> = {
-  0: "None",
-  2: "2 m",
-  5: "5 m",
-  10: "10 m",
-  20: "20 m",
-  50: "50 m",
-  100: "100 m",
-};
-const EPSILON_VALUES = [0, 2, 5, 10, 20, 50, 100];
-const DEFAULT_EPSILON = 10;
 
 function countGpxPoints(text: string): number {
   return (text.match(/<trkpt\b/gi) ?? []).length;
@@ -196,8 +191,8 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
   );
 
   const [raceId, setRaceId] = useState(fixedRaceId ?? "");
-  const [epsilon, setEpsilon] = useState(DEFAULT_EPSILON);
   const [gpxInfo, setGpxInfo] = useState<GpxInfo | null>(null);
+  const [checkpointsGeoJson, setCheckpointsGeoJson] = useState<string | null>(null);
   const [imageInfo, setImageInfo] = useState<ImageInfo | null>(null);
   const prevImageUrlRef = useRef<string | null>(null);
 
@@ -217,13 +212,15 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
   const handleGpxChange = useCallback((file: File | null) => {
     if (!file) {
       setGpxInfo(null);
+      setCheckpointsGeoJson(null);
       return;
     }
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result;
       if (typeof text === "string") {
-        setGpxInfo({ fileName: file.name, pointCount: countGpxPoints(text) });
+        setGpxInfo({ fileName: file.name, pointCount: countGpxPoints(text), text });
+        setCheckpointsGeoJson(null);
       }
     };
     reader.readAsText(file);
@@ -362,9 +359,9 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
           <span className="ml-2 text-sm font-normal text-stone-400">optional</span>
         </h2>
         <p className="mt-1 mb-5 text-sm text-stone-500">
-          Max 5 MB. The file will be stripped of timestamps and device metadata,
+          Max 20 MB. The file will be stripped of timestamps and device metadata,
           then track points will be smoothed. Saved as{" "}
-          <code>races/&lt;id&gt;/route.gpx</code>.
+          <code>races/&lt;id&gt;/route.geojson</code>.
         </p>
 
         <DropZone
@@ -382,53 +379,25 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
                 {gpxInfo.pointCount.toLocaleString()} track points loaded
               </p>
               <p className="text-stone-500 text-xs mt-0.5">
-                Smoothing will reduce this further depending on the tolerance
-                chosen below.
+                Track points will be smoothed automatically before saving.
               </p>
             </div>
           )}
         </DropZone>
 
-        {/* Smoothing tolerance */}
-        <div className="mt-6 space-y-3">
-          <div className="flex items-baseline justify-between">
-            <label
-              htmlFor="epsilon"
-              className="text-sm font-semibold text-stone-800"
-            >
-              Smoothing tolerance
-            </label>
-            <span className="text-sm font-medium text-amber-700 tabular-nums">
-              {EPSILON_LABELS[epsilon] ?? `${epsilon} m`}
-            </span>
-          </div>
-
-          <input
-            id="epsilon"
-            name="epsilon"
-            type="range"
-            min={0}
-            max={EPSILON_VALUES.length - 1}
-            step={1}
-            value={EPSILON_VALUES.indexOf(epsilon) === -1 ? 3 : EPSILON_VALUES.indexOf(epsilon)}
-            onChange={(e) =>
-              setEpsilon(EPSILON_VALUES[parseInt(e.target.value, 10)] ?? DEFAULT_EPSILON)
-            }
-            className="w-full accent-amber-600"
-          />
-
-          <div className="flex justify-between text-xs text-stone-400 select-none">
-            {EPSILON_VALUES.map((v) => (
-              <span key={v}>{v === 0 ? "Off" : `${v} m`}</span>
-            ))}
-          </div>
-
-          <p className="text-xs text-stone-500 leading-relaxed">
-            Douglas-Peucker algorithm. Higher values remove more points and
-            produce a smoother, smaller file. 5–10 m is recommended for most
-            hill races.
-          </p>
-        </div>
+        {gpxInfo && (
+          <>
+            <CheckpointMapEditor
+              gpxText={gpxInfo.text}
+              onChange={setCheckpointsGeoJson}
+            />
+            <input
+              type="hidden"
+              name="checkpointsGeoJson"
+              value={checkpointsGeoJson ?? ""}
+            />
+          </>
+        )}
       </section>
 
       {/* ── Options ─────────────────────────────────────────── */}
@@ -478,7 +447,7 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
       <div className="flex items-center gap-4">
         <button
           type="submit"
-          disabled={isPending || !raceId.trim() || !hasFiles}
+          disabled={isPending || !raceId.trim() || !hasFiles || state.status === "success"}
           className="rounded-full bg-amber-700 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {isPending ? "Uploading…" : "Upload and save"}

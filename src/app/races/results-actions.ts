@@ -137,7 +137,7 @@ function buildNewsPrefillUrl(raceId: string, year: string, csvText: string): str
     ...winners.categoryWinners.map((cw) => formatWinnerLine(cw.label, cw.alsoWon, cw.winner)),
     `- ${winners.nEntrants} entrants in total.`,
     "",
-    `Full results can be found [here](/races/${encodeURIComponent(raceId)}?year=${encodeURIComponent(year)}).`,
+    `Full results can be found [on the race results page](/races/${encodeURIComponent(raceId)}?year=${encodeURIComponent(year)}).`,
     "",
     "Congratulations to all runners and thanks to organisers and volunteers.",
   ].join("\n");

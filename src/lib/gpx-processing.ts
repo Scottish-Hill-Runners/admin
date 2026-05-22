@@ -1,3 +1,7 @@
+import { DOMParser } from "@xmldom/xmldom";
+
+// ─── Douglas-Peucker simplification ──────────────────────────────────────────
+
 const EARTH_RADIUS_M = 6_371_000;
 const DEG_TO_RAD = Math.PI / 180;
 
@@ -86,98 +90,120 @@ function douglasPeucker(
   return keep;
 }
 
-/** Removes the `<metadata>…</metadata>` block. */
-function removeMetadata(gpx: string): string {
-  return gpx.replace(/<metadata\b[\s\S]*?<\/metadata>\s*/gi, "");
-}
+// ─── GeoJSON route output ─────────────────────────────────────────────────────
 
-/** Removes all `<time>…</time>` leaf elements. */
-function removeTimes(gpx: string): string {
-  return gpx.replace(/<time>[^<]*<\/time>\s*/gi, "");
-}
+/** A checkpoint to embed as a GeoJSON Point feature. */
+export type CheckpointInput = {
+  trackPointIndex: number;
+  name: string;
+  cutoff: string;
+  notes: string;
+};
 
-/** Removes the `creator="…"` attribute from the root `<gpx>` element. */
-function removeCreator(gpx: string): string {
-  // Handle creator at the end of an attribute list (followed by other attrs or >)
-  return gpx.replace(
-    /(<gpx\b(?:[^>](?!creator))*)\s+creator="[^"]*"/i,
-    "$1",
-  );
-}
-
-/** Applies Douglas-Peucker to every `<trkseg>` block in the GPX string. */
-function smoothTracks(
-  gpx: string,
-  epsilonM: number,
-): { result: string; pointsBefore: number; pointsAfter: number } {
-  let pointsBefore = 0;
-  let pointsAfter = 0;
-
-  const result = gpx.replace(
-    /<trkseg\b[^>]*>([\s\S]*?)<\/trkseg>/gi,
-    (_, segContent: string) => {
-      // Collect all <trkpt> blocks from this segment
-      const trkptBlocks: string[] = [];
-      const trkptRe = /<trkpt\b[^>]*>[\s\S]*?<\/trkpt>/gi;
-      let m: RegExpExecArray | null;
-      while ((m = trkptRe.exec(segContent)) !== null) {
-        trkptBlocks.push(m[0]);
-      }
-
-      pointsBefore += trkptBlocks.length;
-
-      if (trkptBlocks.length < 3 || epsilonM <= 0) {
-        pointsAfter += trkptBlocks.length;
-        return `<trkseg>${segContent}</trkseg>`;
-      }
-
-      // Parse coordinates
-      const coords: LatLon[] = trkptBlocks.map((block) => {
-        const latM = block.match(/\blat="([^"]+)"/);
-        const lonM = block.match(/\blon="([^"]+)"/);
-        return {
-          lat: latM ? parseFloat(latM[1]) : 0,
-          lon: lonM ? parseFloat(lonM[1]) : 0,
-        };
-      });
-
-      // Cosine correction from average latitude
-      const avgLat = coords.reduce((s, c) => s + c.lat, 0) / coords.length;
-      const cosLat = Math.cos(avgLat * DEG_TO_RAD);
-
-      const keep = douglasPeucker(coords, epsilonM, cosLat);
-      const surviving = trkptBlocks.filter((_, i) => keep[i]);
-      pointsAfter += surviving.length;
-
-      return `<trkseg>\n    ${surviving.join("\n    ")}\n  </trkseg>`;
-    },
-  );
-
-  return { result, pointsBefore, pointsAfter };
-}
-
-export type GpxCleanResult = {
-  result: string;
-  /** Number of track points in the original file. */
+export type RouteGeoJsonResult = {
+  geojson: string;
   pointsBefore: number;
-  /** Number of track points retained after smoothing. */
   pointsAfter: number;
 };
 
-/**
- * Cleans a GPX string ready for publication:
- *
- * 1. Removes the `<metadata>` block (author names, timestamps, descriptions).
- * 2. Strips all `<time>` elements from track points.
- * 3. Removes the `creator` attribute from the root element.
- * 4. Simplifies track geometry using the Douglas-Peucker algorithm.
- *
- * @param gpx       Raw GPX content as a UTF-8 string.
- * @param epsilonM  Smoothing tolerance in metres. Pass 0 to skip smoothing.
- */
-export function cleanGpx(gpx: string, epsilonM: number): GpxCleanResult {
-  let processed = removeMetadata(gpx);
-  processed = removeTimes(processed);
-  processed = removeCreator(processed);
-  return smoothTracks(processed, epsilonM);
+function r6(n: number): number {
+  return Math.round(n * 1_000_000) / 1_000_000;
 }
+
+/**
+ * Converts a GPX file into a single GeoJSON FeatureCollection containing:
+ *   - A `LineString` feature for the simplified route (`properties.type = "route"`)
+ *   - One `Point` feature per checkpoint (`properties.type = "checkpoint"`)
+ *
+ * All coordinates are `[lon, lat, ele]` triples rounded to 6 decimal places.
+ * Segment-aware Douglas-Peucker is applied so checkpoint track points are
+ * guaranteed to survive smoothing.
+ */
+export function gpxToRouteGeoJson(
+  gpx: string,
+  epsilonM: number,
+  checkpoints: CheckpointInput[],
+): RouteGeoJsonResult {
+  type TrkPt = { lat: number; lon: number; ele: number };
+
+  const doc = new DOMParser().parseFromString(gpx, "application/xml");
+  const nodeList = doc.getElementsByTagName("trkpt");
+
+  const allTrkpts: TrkPt[] = [];
+  for (let i = 0; i < nodeList.length; i++) {
+    const node = nodeList[i];
+    const lat = parseFloat(node.getAttribute("lat") ?? "0");
+    const lon = parseFloat(node.getAttribute("lon") ?? "0");
+    const eleEl = node.getElementsByTagName("ele")[0];
+    const ele = eleEl ? parseFloat(eleEl.textContent ?? "0") : 0;
+    allTrkpts.push({ lat, lon, ele });
+  }
+
+  const pointsBefore = allTrkpts.length;
+
+  // Run segment-aware D-P and collect surviving indices.
+  let routeCoords: [number, number, number][];
+
+  if (allTrkpts.length < 2 || epsilonM <= 0) {
+    routeCoords = allTrkpts.map((p) => [r6(p.lon), r6(p.lat), r6(p.ele)]);
+  } else {
+    const checkpointIndices = checkpoints
+      .map((c) => c.trackPointIndex)
+      .filter((i) => i >= 0 && i < allTrkpts.length);
+
+    const splits = Array.from(
+      new Set([0, ...checkpointIndices, allTrkpts.length - 1]),
+    ).sort((a, b) => a - b);
+
+    const latLons: LatLon[] = allTrkpts.map(({ lat, lon }) => ({ lat, lon }));
+    const avgLat = allTrkpts.reduce((s, p) => s + p.lat, 0) / allTrkpts.length;
+    const cosLat = Math.cos(avgLat * DEG_TO_RAD);
+
+    const keptIndices = new Set<number>();
+    for (let si = 0; si < splits.length - 1; si++) {
+      const start = splits[si];
+      const end = splits[si + 1];
+      const keep = douglasPeucker(latLons.slice(start, end + 1), epsilonM, cosLat);
+      for (let i = 0; i < keep.length; i++) {
+        if (keep[i]) keptIndices.add(start + i);
+      }
+    }
+
+    routeCoords = Array.from(keptIndices)
+      .sort((a, b) => a - b)
+      .map((i) => [r6(allTrkpts[i].lon), r6(allTrkpts[i].lat), r6(allTrkpts[i].ele)]);
+  }
+
+  const pointsAfter = routeCoords.length;
+
+  const routeFeature = {
+    type: "Feature" as const,
+    geometry: { type: "LineString" as const, coordinates: routeCoords },
+    properties: { type: "route" },
+  };
+
+  const checkpointFeatures = checkpoints.map((cp) => {
+    const pt = allTrkpts[cp.trackPointIndex] ?? allTrkpts[0];
+    return {
+      type: "Feature" as const,
+      geometry: {
+        type: "Point" as const,
+        coordinates: [r6(pt.lon), r6(pt.lat), r6(pt.ele)] as [number, number, number],
+      },
+      properties: {
+        type: "checkpoint",
+        name: cp.name,
+        cutoff: cp.cutoff,
+        notes: cp.notes,
+      },
+    };
+  });
+
+  const featureCollection = {
+    type: "FeatureCollection" as const,
+    features: [routeFeature, ...checkpointFeatures],
+  };
+
+  return { geojson: JSON.stringify(featureCollection), pointsBefore, pointsAfter };
+}
+

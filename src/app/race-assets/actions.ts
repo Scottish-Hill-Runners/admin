@@ -1,12 +1,13 @@
 "use server";
 
 import { createContentPullRequestWithFiles } from "@/lib/github";
-import { cleanGpx } from "@/lib/gpx-processing";
+import { gpxToRouteGeoJson, type CheckpointInput } from "@/lib/gpx-processing";
 import { getEditorSession, buildPrAuthor } from "@/lib/auth-session";
 import { optimizeUploadedImage } from "@/lib/image-upload";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
-const MAX_GPX_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_GPX_BYTES = 20 * 1024 * 1024; // 20 MB
+const GPX_EPSILON_M = 50; // fixed smoothing tolerance
 
 const ALLOWED_IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "webp", "svg"]);
 const RACE_ID_RE = /^[A-Za-z0-9-]{2,80}$/;
@@ -31,13 +32,6 @@ export async function uploadRaceAssets(
       message:
         "Invalid race ID. Use 2–80 characters: letters, numbers, and hyphens only.",
     };
-  }
-
-  // --- validate epsilon ---
-  const epsilonRaw = formData.get("epsilon");
-  const epsilon = epsilonRaw !== null ? parseFloat(String(epsilonRaw)) : 10;
-  if (!Number.isFinite(epsilon) || epsilon < 0 || epsilon > 100) {
-    return { status: "error", message: "Smoothing tolerance must be 0–100 m." };
   }
 
   const imageFile = formData.get("imageFile");
@@ -100,7 +94,7 @@ export async function uploadRaceAssets(
   // --- process GPX ---
   if (hasGpx && gpxFile instanceof File) {
     if (gpxFile.size > MAX_GPX_BYTES) {
-      return { status: "error", message: "GPX file must be under 5 MB." };
+      return { status: "error", message: "GPX file must be under 20 MB." };
     }
 
     const name = gpxFile.name.toLowerCase();
@@ -112,15 +106,72 @@ export async function uploadRaceAssets(
     }
 
     const rawText = await gpxFile.text();
-    const { result, pointsBefore, pointsAfter } = cleanGpx(rawText, epsilon);
-    gpxSummary =
-      epsilon > 0
-        ? `${pointsBefore.toLocaleString()} → ${pointsAfter.toLocaleString()} track points after ${epsilon} m smoothing`
-        : `${pointsBefore.toLocaleString()} track points (no smoothing)`;
+
+    // Parse checkpoint data from the GeoJSON submitted alongside the GPX.
+    const checkpointsRaw = String(formData.get("checkpointsGeoJson") ?? "").trim();
+    let checkpoints: CheckpointInput[] = [];
+
+    if (checkpointsRaw.length > 0) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(checkpointsRaw);
+      } catch {
+        return {
+          status: "error",
+          message: "Checkpoint data could not be read. Please try again.",
+        };
+      }
+
+      // Validate: must be a GeoJSON FeatureCollection of Point features
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        (parsed as Record<string, unknown>)["type"] !== "FeatureCollection" ||
+        !Array.isArray((parsed as Record<string, unknown>)["features"])
+      ) {
+        return {
+          status: "error",
+          message: "Checkpoint data is in an unexpected format. Please try again.",
+        };
+      }
+
+      const features = (parsed as { features: unknown[] })["features"];
+      for (const f of features) {
+        if (
+          typeof f !== "object" ||
+          f === null ||
+          (f as Record<string, unknown>)["type"] !== "Feature" ||
+          (f as { geometry?: { type?: unknown } }).geometry?.type !== "Point"
+        ) {
+          return {
+            status: "error",
+            message: "Checkpoint data contains unexpected geometry. Please try again.",
+          };
+        }
+        const props = (f as { properties?: Record<string, unknown> }).properties ?? {};
+        const idx = props["trackPointIndex"];
+        if (typeof idx === "number" && Number.isInteger(idx) && idx >= 0) {
+          checkpoints.push({
+            trackPointIndex: idx,
+            name: typeof props["name"] === "string" ? props["name"] : "",
+            cutoff: typeof props["cutoff"] === "string" ? props["cutoff"] : "",
+            notes: typeof props["notes"] === "string" ? props["notes"] : "",
+          });
+        }
+      }
+    }
+
+    const { geojson, pointsBefore, pointsAfter } = gpxToRouteGeoJson(
+      rawText,
+      GPX_EPSILON_M,
+      checkpoints,
+    );
+
+    gpxSummary = `${pointsBefore.toLocaleString()} → ${pointsAfter.toLocaleString()} track points after ${GPX_EPSILON_M} m smoothing`;
 
     files.push({
-      path: `races/${raceId}/route.gpx`,
-      content: result,
+      path: `races/${raceId}/route.geojson`,
+      content: geojson,
       encoding: "utf8",
     });
   }
