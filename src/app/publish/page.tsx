@@ -1,8 +1,10 @@
 import { EditorialShell } from "@/components/editorial-shell";
 import { PublishForm } from "@/components/publish-form";
 import { getStagingStatus } from "@/lib/github";
+import { requireEditorAccess } from "@/lib/route-protection";
 
 export default async function PublishPage() {
+  await requireEditorAccess({ callbackUrl: "/publish" });
   const stagingStatus = await getStagingStatus();
 
   return (

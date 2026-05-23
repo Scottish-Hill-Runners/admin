@@ -1,6 +1,10 @@
 "use server";
 
-import { mergePullRequest, publishAndMergeToLive } from "@/lib/github";
+import {
+  isGitHubAccessError,
+  mergePullRequest,
+  publishAndMergeToLive,
+} from "@/lib/github";
 import { requirePublisherAccess } from "@/lib/route-protection";
 import { buildPrAuthor } from "@/lib/auth-session";
 
@@ -27,6 +31,13 @@ export async function acceptSubmissionAction(
     await mergePullRequest(pullNumber);
     return { status: "success", message: "Submission accepted and added to draft updates." };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
     return {
       status: "error",
       message:
@@ -51,6 +62,13 @@ export async function publishLiveAction(
     await publishAndMergeToLive(author ?? undefined);
     return { status: "success", message: "Draft updates are now live." };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
     return {
       status: "error",
       message:

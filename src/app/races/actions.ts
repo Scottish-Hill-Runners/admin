@@ -3,7 +3,7 @@
 import { z } from "zod";
 import matter from "gray-matter";
 import { contentConfig } from "@/lib/content-config";
-import { createContentPullRequest } from "@/lib/github";
+import { createContentPullRequest, isGitHubAccessError } from "@/lib/github";
 import { raceFormSchema, type RaceFormValues } from "@/lib/race-schema";
 import { getEditorSession, buildPrAuthor } from "@/lib/auth-session";
 
@@ -84,6 +84,13 @@ export async function saveRaceDraft(
       message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
     };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
     return {
       status: "error",
       message:

@@ -42,6 +42,13 @@ Install dependencies and start the dev server:
 npm run dev
 ```
 
+To validate private content repository configuration and run a cutover smoke check:
+
+```bash
+npm run health:content
+npm run smoke:private-repo
+```
+
 For OAuth auth, configure one or more provider settings in `.env.local`:
 
 - `AUTH_SECRET`

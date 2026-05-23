@@ -7,7 +7,7 @@ import {
   type ChampionshipFormValues,
 } from "@/lib/championship-schema";
 import { contentConfig } from "@/lib/content-config";
-import { createContentPullRequest } from "@/lib/github";
+import { createContentPullRequest, isGitHubAccessError } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
 import { buildPrAuthor } from "@/lib/auth-session";
 
@@ -73,6 +73,13 @@ export async function saveChampionshipDraft(
       message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
     };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
     return {
       status: "error",
       message:

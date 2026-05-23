@@ -2,7 +2,11 @@
 
 import { z } from "zod";
 import { contentConfig } from "@/lib/content-config";
-import { createContentPullRequest, listRaceDrafts } from "@/lib/github";
+import {
+  createContentPullRequest,
+  isGitHubAccessError,
+  listRaceDrafts,
+} from "@/lib/github";
 import { calendarSchema, type CalendarValues } from "@/lib/calendar-schema";
 import { validateCalendarCsv } from "@/lib/calendar-csv";
 import { getEditorSession, buildPrAuthor } from "@/lib/auth-session";
@@ -79,6 +83,14 @@ export async function saveCalendarDraft(
       issues: issueMessages,
     };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+        issues: issueMessages.length > 0 ? issueMessages : [initialMessage],
+      };
+    }
+
     return {
       status: "error",
       message:

@@ -94,6 +94,20 @@ type PullRequestFileItem = {
   status: string;
 };
 
+type GitHubAccessErrorCode = "unauthorized" | "forbidden";
+
+export class GitHubAccessError extends Error {
+  readonly code: GitHubAccessErrorCode;
+  readonly status: number;
+
+  constructor(code: GitHubAccessErrorCode, message: string, status: number) {
+    super(message);
+    this.name = "GitHubAccessError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
 const githubGetCache = new Map<string, CachedGetEntry>();
 const GITHUB_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_GITHUB_CACHE_ENTRIES = 250;
@@ -357,6 +371,38 @@ function getErrorStatus(error: unknown): number | null {
   return null;
 }
 
+function toGitHubAccessError(error: unknown): GitHubAccessError | null {
+  const status = getErrorStatus(error);
+  if (status === 401) {
+    return new GitHubAccessError(
+      "unauthorized",
+      "Could not access the content store. Please check the GitHub credentials.",
+      status
+    );
+  }
+
+  if (status === 403) {
+    return new GitHubAccessError(
+      "forbidden",
+      "Could not access the content store. Please check repository permissions.",
+      status
+    );
+  }
+
+  return null;
+}
+
+function throwIfGitHubAccessError(error: unknown): void {
+  const accessError = toGitHubAccessError(error);
+  if (accessError) {
+    throw accessError;
+  }
+}
+
+export function isGitHubAccessError(error: unknown): error is GitHubAccessError {
+  return error instanceof GitHubAccessError;
+}
+
 async function requestGitHubGet<T>(
   client: Octokit,
   route: string,
@@ -411,6 +457,8 @@ async function requestGitHubGet<T>(
 
     return response.data as T;
   } catch (error) {
+    throwIfGitHubAccessError(error);
+
     logGitHubPerf("request-error", {
       route,
       durationMs: Date.now() - requestStartedAt,
@@ -485,8 +533,14 @@ async function getExistingFileSha(
     if (!Array.isArray(existing) && "sha" in existing) {
       return existing.sha;
     }
-  } catch {
-    return undefined;
+  } catch (error) {
+    throwIfGitHubAccessError(error);
+
+    if (getErrorStatus(error) === 404) {
+      return undefined;
+    }
+
+    throw error;
   }
 
   return undefined;
@@ -519,6 +573,8 @@ async function getRepositoryFile(path: string, options?: { nullOn404?: boolean }
     if (options?.nullOn404 && getErrorStatus(error) === 404) {
       return null;
     }
+
+    throwIfGitHubAccessError(error);
     throw error;
   }
 
@@ -560,6 +616,8 @@ async function getRepositoryDirectory(path: string, options?: { nullOn404?: bool
     if (options?.nullOn404 && getErrorStatus(error) === 404) {
       return null;
     }
+
+    throwIfGitHubAccessError(error);
     throw error;
   }
 
@@ -1033,9 +1091,191 @@ async function hasBranch(client: Octokit, repo: RepoRef, branch: string): Promis
   return refs.some((entry) => entry.ref === `refs/heads/${branch}`);
 }
 
+type ContentStoreHealthCheckItem = {
+  status: "ok" | "warning" | "error";
+  message: string;
+  httpStatus?: number;
+};
+
+export type ContentStoreHealthReport = {
+  status: "ok" | "error";
+  checkedAt: string;
+  repo: string;
+  branch: string;
+  stagingBranch: string;
+  checks: {
+    credentials: ContentStoreHealthCheckItem;
+    repository: ContentStoreHealthCheckItem;
+    liveBranch: ContentStoreHealthCheckItem;
+    stagingBranch: ContentStoreHealthCheckItem;
+    pullRequestsApi: ContentStoreHealthCheckItem;
+  };
+};
+
+function toHealthErrorItem(error: unknown, fallbackMessage: string): ContentStoreHealthCheckItem {
+  const status = getErrorStatus(error) ?? undefined;
+  if (isGitHubAccessError(error)) {
+    return {
+      status: "error",
+      message: error.message,
+      ...(status ? { httpStatus: status } : {}),
+    };
+  }
+
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return {
+      status: "error",
+      message: error.message,
+      ...(status ? { httpStatus: status } : {}),
+    };
+  }
+
+  return {
+    status: "error",
+    message: fallbackMessage,
+    ...(status ? { httpStatus: status } : {}),
+  };
+}
+
+export async function getContentStoreHealthReport(): Promise<ContentStoreHealthReport> {
+  const checkedAt = new Date().toISOString();
+  const report: ContentStoreHealthReport = {
+    status: "ok",
+    checkedAt,
+    repo: contentConfig.repo,
+    branch: contentConfig.branch,
+    stagingBranch: contentConfig.stagingBranch,
+    checks: {
+      credentials: {
+        status: "ok",
+        message: "GitHub credentials are configured.",
+      },
+      repository: {
+        status: "ok",
+        message: "Content repository is reachable.",
+      },
+      liveBranch: {
+        status: "ok",
+        message: `Live branch (${contentConfig.branch}) is reachable.`,
+      },
+      stagingBranch: {
+        status: "ok",
+        message: `Draft branch (${contentConfig.stagingBranch}) is reachable.`,
+      },
+      pullRequestsApi: {
+        status: "ok",
+        message: "Pull request listing endpoint is reachable.",
+      },
+    },
+  };
+
+  const client = getGitHubClient();
+  if (!client) {
+    report.status = "error";
+    report.checks.credentials = {
+      status: "error",
+      message: "GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.",
+    };
+    report.checks.repository = {
+      status: "error",
+      message: "Repository check skipped because credentials are missing.",
+    };
+    report.checks.liveBranch = {
+      status: "error",
+      message: "Live branch check skipped because credentials are missing.",
+    };
+    report.checks.stagingBranch = {
+      status: "warning",
+      message: "Draft branch check skipped because credentials are missing.",
+    };
+    report.checks.pullRequestsApi = {
+      status: "error",
+      message: "Pull request API check skipped because credentials are missing.",
+    };
+    return report;
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+
+  try {
+    await requestGitHubGet(client, "GET /repos/{owner}/{repo}", {
+      owner: repo.owner,
+      repo: repo.repo,
+    });
+  } catch (error) {
+    report.status = "error";
+    report.checks.repository = toHealthErrorItem(
+      error,
+      "Could not reach the content repository."
+    );
+  }
+
+  try {
+    await requestGitHubGet(client, "GET /repos/{owner}/{repo}/git/ref/{ref}", {
+      owner: repo.owner,
+      repo: repo.repo,
+      ref: `heads/${contentConfig.branch}`,
+    });
+  } catch (error) {
+    report.status = "error";
+    report.checks.liveBranch = toHealthErrorItem(
+      error,
+      "Could not reach the live branch ref."
+    );
+  }
+
+  try {
+    await requestGitHubGet(client, "GET /repos/{owner}/{repo}/git/ref/{ref}", {
+      owner: repo.owner,
+      repo: repo.repo,
+      ref: `heads/${contentConfig.stagingBranch}`,
+    });
+  } catch (error) {
+    if (getErrorStatus(error) === 404) {
+      report.checks.stagingBranch = {
+        status: "warning",
+        message:
+          "Draft branch was not found yet. It may be created automatically on first save.",
+        httpStatus: 404,
+      };
+    } else {
+      report.status = "error";
+      report.checks.stagingBranch = toHealthErrorItem(
+        error,
+        "Could not reach the draft branch ref."
+      );
+    }
+  }
+
+  try {
+    await requestGitHubGet(client, "GET /repos/{owner}/{repo}/pulls", {
+      owner: repo.owner,
+      repo: repo.repo,
+      state: "open",
+      base: contentConfig.stagingBranch,
+      per_page: 1,
+      page: 1,
+    });
+  } catch (error) {
+    report.status = "error";
+    report.checks.pullRequestsApi = toHealthErrorItem(
+      error,
+      "Could not query pull requests for the draft branch."
+    );
+  }
+
+  return report;
+}
+
 export type StagingStatus =
   | { state: "up-to-date" }
-  | { state: "ahead"; aheadBy: number; behindBy: number; prUrl: string | null }
+  | {
+      state: "ahead";
+      aheadBy: number;
+      behindBy: number;
+      prUrl: string | null;
+      prNumber: number | null;
+    }
   | { state: "error"; message: string };
 
 export async function getStagingStatus(): Promise<StagingStatus> {
@@ -1077,6 +1317,7 @@ export async function getStagingStatus(): Promise<StagingStatus> {
 
   // Check for an existing open staging → live PR.
   let prUrl: string | null = null;
+  let prNumber: number | null = null;
   try {
     const existingPrs = await requestGitHubGet<Array<{ number: number; html_url: string; head: { ref: string }; base: { ref: string } }>>(
       client,
@@ -1092,6 +1333,7 @@ export async function getStagingStatus(): Promise<StagingStatus> {
     );
     if (existingPrs.length > 0) {
       prUrl = existingPrs[0].html_url;
+      prNumber = existingPrs[0].number;
     }
   } catch {
     // Best-effort — we can still show the status without the PR URL.
@@ -1102,6 +1344,7 @@ export async function getStagingStatus(): Promise<StagingStatus> {
     aheadBy: comparison.ahead_by,
     behindBy: comparison.behind_by,
     prUrl,
+    prNumber,
   };
 }
 
@@ -1116,25 +1359,55 @@ export async function publishStagingToLive(author?: { name: string; email: strin
   }
 
   const repo = parseRepoSlug(contentConfig.repo);
+  const normalizedRepo = contentConfig.repo.trim().toLowerCase();
 
-  // Return an existing open PR if one already exists.
-  const existingPrs = await requestGitHubGet<Array<{ number: number; html_url: string }>>(
-    client,
-    "GET /repos/{owner}/{repo}/pulls",
-    {
+  type PublishPullListItem = {
+    number: number;
+    html_url: string;
+    head: {
+      ref: string;
+      repo?: {
+        full_name?: string | null;
+      } | null;
+    };
+  };
+
+  async function findOpenPublishRequest(): Promise<{ number: number; html_url: string } | null> {
+    // Use an uncached read here because this check runs immediately before creating a PR.
+    const response = await client.request("GET /repos/{owner}/{repo}/pulls", {
       owner: repo.owner,
       repo: repo.repo,
       state: "open",
-      head: `${repo.owner}:${contentConfig.stagingBranch}`,
       base: contentConfig.branch,
-      per_page: 1,
-    }
-  );
+      per_page: 50,
+      page: 1,
+    });
 
-  if (existingPrs.length > 0) {
+    const matched = (response.data as PublishPullListItem[]).find((pull) => {
+      if (pull.head.ref !== contentConfig.stagingBranch) {
+        return false;
+      }
+
+      const headRepo = pull.head.repo?.full_name?.toLowerCase() ?? "";
+      return headRepo === normalizedRepo;
+    });
+
+    if (!matched) {
+      return null;
+    }
+
     return {
-      prNumber: existingPrs[0].number,
-      prUrl: existingPrs[0].html_url,
+      number: matched.number,
+      html_url: matched.html_url,
+    };
+  }
+
+  // Return an existing open PR if one already exists.
+  const existingPr = await findOpenPublishRequest();
+  if (existingPr) {
+    return {
+      prNumber: existingPr.number,
+      prUrl: existingPr.html_url,
       alreadyExists: true,
     };
   }
@@ -1148,14 +1421,31 @@ export async function publishStagingToLive(author?: { name: string; email: strin
     .filter((line) => line !== null)
     .join("\n");
 
-  const pullRequest = await client.pulls.create({
-    owner: repo.owner,
-    repo: repo.repo,
-    title: `Publish staged content to live`,
-    body: prBody,
-    head: contentConfig.stagingBranch,
-    base: contentConfig.branch,
-  });
+  let pullRequest: Awaited<ReturnType<typeof client.pulls.create>>;
+  try {
+    pullRequest = await client.pulls.create({
+      owner: repo.owner,
+      repo: repo.repo,
+      title: `Publish staged content to live`,
+      body: prBody,
+      head: contentConfig.stagingBranch,
+      base: contentConfig.branch,
+    });
+  } catch (error) {
+    // GitHub returns 422 when the PR already exists; recover by returning that existing request.
+    if (getErrorStatus(error) === 422) {
+      const recoveredExistingPr = await findOpenPublishRequest();
+      if (recoveredExistingPr) {
+        return {
+          prNumber: recoveredExistingPr.number,
+          prUrl: recoveredExistingPr.html_url,
+          alreadyExists: true,
+        };
+      }
+    }
+
+    throw error;
+  }
 
   return {
     prNumber: pullRequest.data.number,
@@ -1250,7 +1540,12 @@ export async function createContentPullRequest({
         issue_number: pullRequest.data.number,
         labels,
       });
-    } catch {
+    } catch (error) {
+      console.warn("Could not apply labels to content pull request", {
+        prNumber: pullRequest.data.number,
+        labels,
+        status: getErrorStatus(error),
+      });
       // Label application is best-effort; the PR was created successfully.
     }
   }
@@ -1328,7 +1623,12 @@ export async function createContentPullRequestWithFiles({
         issue_number: pullRequest.data.number,
         labels,
       });
-    } catch {
+    } catch (error) {
+      console.warn("Could not apply labels to content pull request", {
+        prNumber: pullRequest.data.number,
+        labels,
+        status: getErrorStatus(error),
+      });
       // Label application is best-effort; the PR was created successfully.
     }
   }
@@ -1517,6 +1817,195 @@ export type StagingPullRequest = {
   submitterEmail: string | null;
 };
 
+type PullRequestListResponseItem = {
+  number: number;
+  title: string;
+  html_url: string;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  merged_at: string | null;
+  body?: string | null;
+};
+
+type PullRequestDetailResponseItem = PullRequestListResponseItem & {
+  state: "open" | "closed";
+};
+
+type PullRequestFileResponseItem = {
+  filename: string;
+  status: "added" | "removed" | "modified" | "renamed" | "copied" | "changed";
+};
+
+function parseSubmissionAuthor(body: string | null | undefined): {
+  name: string | null;
+  email: string | null;
+} {
+  const lines = (body ?? "").split("\n");
+  const submissionLine = lines.find(
+    (line) => line.startsWith("- Editor:") || line.startsWith("- Requested by:")
+  );
+
+  if (!submissionLine) {
+    return { name: null, email: null };
+  }
+
+  const match = submissionLine.match(/^-(?: Editor| Requested by):\s+(.+?)\s+<(.+?)>$/);
+  if (!match) {
+    return { name: null, email: null };
+  }
+
+  return {
+    name: match[1] ?? null,
+    email: match[2] ?? null,
+  };
+}
+
+export type EditorSubmission = {
+  number: number;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  status: "open" | "closed" | "approved";
+  submitterName: string | null;
+  submitterEmail: string | null;
+};
+
+export type EditorSubmissionDetail = {
+  number: number;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+  status: "open" | "closed" | "approved";
+  submitterName: string | null;
+  submitterEmail: string | null;
+  changedFiles: Array<{
+    path: string;
+    changeType: PullRequestFileResponseItem["status"];
+  }>;
+};
+
+export async function listEditorSubmissions(
+  email: string,
+  options?: { limit?: number }
+): Promise<EditorSubmission[]> {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) {
+    return [];
+  }
+
+  const client = getGitHubClient();
+  if (!client) {
+    throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+  const requestedLimit = options?.limit ?? 30;
+  const limit = Math.min(Math.max(requestedLimit, 1), 100);
+
+  const pulls = await requestGitHubGet<PullRequestListResponseItem[]>(
+    client,
+    "GET /repos/{owner}/{repo}/pulls",
+    {
+      owner: repo.owner,
+      repo: repo.repo,
+      state: "all",
+      base: contentConfig.stagingBranch,
+      sort: "updated",
+      direction: "desc",
+      per_page: limit,
+      page: 1,
+    }
+  );
+
+  return pulls
+    .map((pr) => {
+      const parsedAuthor = parseSubmissionAuthor(pr.body);
+      const submitterEmail = parsedAuthor.email?.trim().toLowerCase() ?? null;
+
+      return {
+        number: pr.number,
+        title: pr.title,
+        createdAt: pr.created_at,
+        updatedAt: pr.updated_at,
+        status: pr.merged_at ? "approved" : pr.closed_at ? "closed" : "open",
+        submitterName: parsedAuthor.name,
+        submitterEmail,
+      } satisfies EditorSubmission;
+    })
+    .filter((pr) => pr.submitterEmail === normalizedEmail);
+}
+
+export async function getEditorSubmissionDetail(
+  email: string,
+  submissionNumber: number
+): Promise<EditorSubmissionDetail | null> {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail || !Number.isInteger(submissionNumber) || submissionNumber <= 0) {
+    return null;
+  }
+
+  const client = getGitHubClient();
+  if (!client) {
+    throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+
+  let pr: PullRequestDetailResponseItem;
+  try {
+    pr = await requestGitHubGet<PullRequestDetailResponseItem>(
+      client,
+      "GET /repos/{owner}/{repo}/pulls/{pull_number}",
+      {
+        owner: repo.owner,
+        repo: repo.repo,
+        pull_number: submissionNumber,
+      }
+    );
+  } catch (error) {
+    if (getErrorStatus(error) === 404) {
+      return null;
+    }
+
+    throw error;
+  }
+
+  const parsedAuthor = parseSubmissionAuthor(pr.body);
+  const submitterEmail = parsedAuthor.email?.trim().toLowerCase() ?? null;
+  if (submitterEmail !== normalizedEmail) {
+    return null;
+  }
+
+  const files = await requestGitHubGet<PullRequestFileResponseItem[]>(
+    client,
+    "GET /repos/{owner}/{repo}/pulls/{pull_number}/files",
+    {
+      owner: repo.owner,
+      repo: repo.repo,
+      pull_number: submissionNumber,
+      per_page: 100,
+      page: 1,
+    }
+  );
+
+  return {
+    number: pr.number,
+    title: pr.title,
+    createdAt: pr.created_at,
+    updatedAt: pr.updated_at,
+    closedAt: pr.closed_at,
+    status: pr.merged_at ? "approved" : pr.state === "closed" ? "closed" : "open",
+    submitterName: parsedAuthor.name,
+    submitterEmail,
+    changedFiles: files.map((file) => ({
+      path: file.filename,
+      changeType: file.status,
+    })),
+  };
+}
+
 export async function listOpenStagingPullRequests(): Promise<StagingPullRequest[]> {
   const client = getGitHubClient();
   if (!client) {
@@ -1525,36 +2014,31 @@ export async function listOpenStagingPullRequests(): Promise<StagingPullRequest[
 
   const repo = parseRepoSlug(contentConfig.repo);
 
-  const prs = await client.request("GET /repos/{owner}/{repo}/pulls", {
-    owner: repo.owner,
-    repo: repo.repo,
-    state: "open",
-    base: contentConfig.stagingBranch,
-    sort: "created",
-    direction: "asc",
-    per_page: 50,
-  });
-
-  return prs.data.map((pr) => {
-    const editorLine = (pr.body ?? "").split("\n").find((line) => line.startsWith("- Editor:"));
-    let submitterName: string | null = null;
-    let submitterEmail: string | null = null;
-
-    if (editorLine) {
-      const match = editorLine.match(/^- Editor:\s+(.+?)\s+<(.+?)>$/);
-      if (match) {
-        submitterName = match[1] ?? null;
-        submitterEmail = match[2] ?? null;
-      }
+  const prs = await requestGitHubGet<PullRequestListResponseItem[]>(
+    client,
+    "GET /repos/{owner}/{repo}/pulls",
+    {
+      owner: repo.owner,
+      repo: repo.repo,
+      state: "open",
+      base: contentConfig.stagingBranch,
+      sort: "created",
+      direction: "asc",
+      per_page: 50,
+      page: 1,
     }
+  );
+
+  return prs.map((pr) => {
+    const parsedAuthor = parseSubmissionAuthor(pr.body);
 
     return {
       number: pr.number,
       title: pr.title,
       createdAt: pr.created_at,
       htmlUrl: pr.html_url,
-      submitterName,
-      submitterEmail,
+      submitterName: parsedAuthor.name,
+      submitterEmail: parsedAuthor.email,
     };
   });
 }

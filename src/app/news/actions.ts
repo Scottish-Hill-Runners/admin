@@ -6,6 +6,7 @@ import { newsFormSchema, type NewsFormValues } from "@/lib/news-schema";
 import { contentConfig } from "@/lib/content-config";
 import {
   createContentPullRequest,
+  isGitHubAccessError,
   listReservedNewsSlugSuffixes,
   suggestNewsSlugSuffixForDate,
 } from "@/lib/github";
@@ -132,6 +133,13 @@ export async function saveNewsDraft(
         : `Saved draft #${result.prNumber}: ${result.prUrl}`,
     };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
     return {
       status: "error",
       message:

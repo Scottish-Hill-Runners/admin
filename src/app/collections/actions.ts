@@ -6,6 +6,7 @@ import { buildPrAuthor, getEditorSession } from "@/lib/auth-session";
 import {
   createContentPullRequest,
   createContentPullRequestWithFiles,
+  isGitHubAccessError,
   getCommitteePortraitsDraft,
   getDocumentsManifestDraft,
   getHomepageImagesDraft,
@@ -281,6 +282,13 @@ async function uploadAssetFilesDraft(
       message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
     };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
     return {
       status: "error",
       message:
@@ -462,6 +470,13 @@ export async function saveHomepageImagesDraft(
       message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
     };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
     return {
       status: "error",
       message:
@@ -570,6 +585,13 @@ export async function saveDocumentsManifestDraft(
       message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
     };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
     return {
       status: "error",
       message:
@@ -674,6 +696,13 @@ export async function saveCommitteePortraitsDraft(
       message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
     };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
     return {
       status: "error",
       message:
@@ -803,6 +832,13 @@ export async function saveRaceImagesDraft(
       message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
     };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
     return {
       status: "error",
       message:
@@ -1051,6 +1087,13 @@ export async function submitRaceImagesDraft(
       prNumber: result.prNumber,
     };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
     return {
       status: "error",
       message: error instanceof Error ? error.message : "Failed to save this draft.",

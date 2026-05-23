@@ -2,7 +2,11 @@
 
 import { z } from "zod";
 import { contentConfig } from "@/lib/content-config";
-import { createContentPullRequest, listAllClubNameSet } from "@/lib/github";
+import {
+  createContentPullRequest,
+  isGitHubAccessError,
+  listAllClubNameSet,
+} from "@/lib/github";
 import {
   extractRaceResultsWinnerSummary,
   validateRaceResultsCsv,
@@ -246,6 +250,14 @@ export async function saveResultsDraft(
         : undefined,
     };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+        issues: issueMessages,
+      };
+    }
+
     return {
       status: "error",
       message:

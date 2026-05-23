@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 import { publishStagingAction, type PublishActionState } from "@/app/publish/actions";
 import type { StagingStatus } from "@/lib/github";
 
@@ -41,17 +42,18 @@ export function PublishForm({ stagingStatus }: PublishFormProps) {
                 An admin will review and resolve this before publishing.
               </p>
             ) : null}
-            {stagingStatus.prUrl ? (
+            {stagingStatus.prNumber ? (
               <p>
-                A publication request is already open:{" "}
-                <a
-                  href={stagingStatus.prUrl}
-                  target="_blank"
-                  rel="noreferrer"
+                A publication request is already open with reference{" "}
+                <span className="font-semibold text-stone-900">#{stagingStatus.prNumber}</span>.
+                Track progress in{" "}
+                <Link
+                  href={`/submissions/${stagingStatus.prNumber}`}
                   className="font-semibold text-amber-700 underline"
                 >
-                  view details
-                </a>
+                  My submissions
+                </Link>
+                .
               </p>
             ) : null}
           </div>
@@ -80,15 +82,14 @@ export function PublishForm({ stagingStatus }: PublishFormProps) {
               <p className="mt-2 text-sm leading-6 text-stone-200">
                 {state.message ?? "Nothing submitted yet."}
               </p>
-              {state.prUrl ? (
-                <a
-                  href={state.prUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-1 inline-block text-sm font-semibold text-lime-300 underline"
-                >
-                  View request details
-                </a>
+              {state.requestNumber ? (
+                <p className="mt-1 text-sm font-semibold text-lime-300">
+                  Request reference: #{state.requestNumber}
+                  {" · "}
+                  <Link href={`/submissions/${state.requestNumber}`} className="underline">
+                    Check progress
+                  </Link>
+                </p>
               ) : null}
             </div>
             <button

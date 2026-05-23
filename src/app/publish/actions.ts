@@ -1,6 +1,6 @@
 "use server";
 
-import { publishStagingToLive } from "@/lib/github";
+import { isGitHubAccessError, publishStagingToLive } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
 import { buildPrAuthor } from "@/lib/auth-session";
 
@@ -8,6 +8,7 @@ export type PublishActionState = {
   status: "idle" | "success" | "error";
   message?: string;
   prUrl?: string;
+  requestNumber?: number;
 };
 
 export async function publishStagingAction(
@@ -26,17 +27,26 @@ export async function publishStagingAction(
     if (result.alreadyExists) {
       return {
         status: "success",
-        message: `A publish PR already exists: #${result.prNumber}`,
+        message: `A publication request already exists: #${result.prNumber}`,
         prUrl: result.prUrl,
+        requestNumber: result.prNumber,
       };
     }
 
     return {
       status: "success",
-      message: `Opened publish PR #${result.prNumber}. Merge it to deploy all staged changes.`,
+      message: `Opened publication request #${result.prNumber}. Approve it to send staged changes live.`,
       prUrl: result.prUrl,
+      requestNumber: result.prNumber,
     };
   } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
     return {
       status: "error",
       message:

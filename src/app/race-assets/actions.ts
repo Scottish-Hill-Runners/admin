@@ -1,6 +1,9 @@
 "use server";
 
-import { createContentPullRequestWithFiles } from "@/lib/github";
+import {
+  createContentPullRequestWithFiles,
+  isGitHubAccessError,
+} from "@/lib/github";
 import { gpxToRouteGeoJson, type CheckpointInput } from "@/lib/gpx-processing";
 import { getEditorSession, buildPrAuthor } from "@/lib/auth-session";
 import { optimizeUploadedImage } from "@/lib/image-upload";
@@ -109,7 +112,7 @@ export async function uploadRaceAssets(
 
     // Parse checkpoint data from the GeoJSON submitted alongside the GPX.
     const checkpointsRaw = String(formData.get("checkpointsGeoJson") ?? "").trim();
-    let checkpoints: CheckpointInput[] = [];
+    const checkpoints: CheckpointInput[] = [];
 
     if (checkpointsRaw.length > 0) {
       let parsed: unknown;
@@ -212,6 +215,13 @@ export async function uploadRaceAssets(
       gpxSummary,
     };
   } catch (err) {
+    if (isGitHubAccessError(err)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
     return {
       status: "error",
       message:

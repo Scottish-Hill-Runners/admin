@@ -169,6 +169,26 @@ export default function Home() {
               </Link>
             </div>
           </div>
+
+          <div>
+            <h3 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-5">My submissions</h3>
+            <div className="space-y-3">
+              <Link
+                href="/submissions"
+                className="block rounded-[1.5rem] border border-stone-900/10 bg-white/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)] transition hover:border-stone-900/25 hover:bg-white"
+              >
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
+                  Track progress
+                </p>
+                <h4 className="mt-2 font-[family:var(--font-heading)] text-xl text-stone-900">
+                  My recent requests
+                </h4>
+                <p className="mt-3 text-base leading-6 text-stone-600">
+                  See whether your draft requests are waiting for review, closed, or approved.
+                </p>
+              </Link>
+            </div>
+          </div>
         </section>
       </div>
     </EditorialShell>
