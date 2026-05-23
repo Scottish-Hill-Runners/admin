@@ -9,6 +9,7 @@ import {
 } from "@/lib/github";
 import {
   extractRaceResultsWinnerSummary,
+  RaceWinner,
   validateRaceResultsCsv,
 } from "@/lib/results-csv";
 import {
@@ -29,15 +30,16 @@ function formatTime(time: string): string {
   return time.replace(/^00:/, "");
 }
 
-function formatWinnerLine(label: string, alsoWon: string[], winner: { name: string; club: string; time: string }) {
+function formatWinnerLine(winner: RaceWinner): string {
   const clubPart = winner.club ? ` (${winner.club})` : "";
+  const alsoWon = Array.from(winner.alsoWon).map((c) => c.label).sort();
   const alsoWonPart =
-    alsoWon.length === 0
+    winner.alsoWon.size === 0
       ? ""
-      : alsoWon.length === 1
+      : winner.alsoWon.size === 1
         ? ` (also first ${alsoWon[0]})`
         : ` (also first ${alsoWon.slice(0, -1).join(", ")} and ${alsoWon[alsoWon.length - 1]})`;
-  return `- ${label}${alsoWonPart}: [${winner.name}](/runner?name=${encodeURIComponent(winner.name)})${clubPart} - ${formatTime(winner.time)}`;
+  return `- ${winner.category.label}${alsoWonPart}: [${winner.name}](/runner?name=${encodeURIComponent(winner.name)})${clubPart} - ${formatTime(winner.time)}`;
 }
 
 function formatWinnerInline(winner: { name: string; club: string; time: string }) {
@@ -113,33 +115,34 @@ function formatLeadDate(dateIso: string): string {
 function buildLeadSentence(
   raceTitle: string,
   leadDate: string,
-  winners: ReturnType<typeof extractRaceResultsWinnerSummary>
+  winners: RaceWinner[]
 ): string {
-  if (winners.male && winners.female) {
-    return `Wins for ${formatWinnerInline(winners.male)} and ${formatWinnerInline(winners.female)} at the ${raceTitle} race on ${leadDate}.`;
-  }
-
+  const maleWinner = winners.find((w) => w.category.group === "male");
+  const femaleWinner = winners.find((w) => w.category.group === "female");
+  if (maleWinner && femaleWinner)
+    return `Wins for ${formatWinnerInline(maleWinner)} and ${formatWinnerInline(femaleWinner)} at the ${raceTitle} race on ${leadDate}.`;
   return `Results are now available for the ${raceTitle} race on ${leadDate}.`;
 }
 
 function buildNewsPrefillUrl(raceId: string, year: string, csvText: string): string {
   const today = new Date().toISOString().slice(0, 10);
-  const winners = extractRaceResultsWinnerSummary(csvText);
+  const { winners, nEntrants } = extractRaceResultsWinnerSummary(csvText);
   const raceTitle = toRaceTitle(raceId);
   const leadDate = formatLeadDate(today);
   const title = `${raceTitle} ${year} results`;
   const excerpt = buildLeadSentence(raceTitle, leadDate, winners);
+  const nonBinaryWinner = winners.find((w) => w.category.group === "nonBinary");
   const content = [
     `## [${raceTitle} ${year} results](/races/${encodeURIComponent(raceId)}?year=${encodeURIComponent(year)})`,
     "",
     excerpt,
-    winners.nonBinary
-      ? `Top non-binary finisher: ${formatWinnerInline(winners.nonBinary)}.`
+    nonBinaryWinner
+      ? `Top non-binary finisher: ${formatWinnerInline(nonBinaryWinner)}.`
       : "",
     "",
     "### Highlights",
-    ...winners.categoryWinners.map((cw) => formatWinnerLine(cw.label, cw.alsoWon, cw.winner)),
-    `- ${winners.nEntrants} entrants in total.`,
+    ...winners.map(formatWinnerLine),
+    `- ${nEntrants} entrants in total.`,
     "",
     `Full results can be found [on the race results page](/races/${encodeURIComponent(raceId)}?year=${encodeURIComponent(year)}).`,
     "",
