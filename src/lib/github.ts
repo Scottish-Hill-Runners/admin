@@ -1353,10 +1353,11 @@ export async function publishStagingToLive(author?: { name: string; email: strin
   prUrl: string;
   alreadyExists: boolean;
 }> {
-  const client = getGitHubClient();
-  if (!client) {
+  const maybeClient = getGitHubClient();
+  if (!maybeClient) {
     throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
   }
+  const client = maybeClient;
 
   const repo = parseRepoSlug(contentConfig.repo);
   const normalizedRepo = contentConfig.repo.trim().toLowerCase();
