@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import {
   uploadRaceAssets,
   type RaceAssetsActionState,
@@ -424,16 +425,18 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
           {state.gpxSummary && (
             <p className="mt-1 text-green-700">{state.gpxSummary}</p>
           )}
-          {state.prUrl && (
-            <a
-              href={state.prUrl}
-              target="_blank"
-              rel="noreferrer"
+          {state.prNumber ? (
+            <Link
+              href={`/submissions/${state.prNumber}`}
               className="mt-2 inline-block font-medium text-green-800 underline underline-offset-2"
             >
               View submission #{state.prNumber} →
-            </a>
-          )}
+            </Link>
+          ) : state.prUrl ? (
+            <p className="mt-2 text-green-800">
+              Submission saved successfully.
+            </p>
+          ) : null}
         </div>
       )}
 
