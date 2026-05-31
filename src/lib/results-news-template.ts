@@ -1,4 +1,5 @@
 import { extractRaceResultsWinnerSummary, type RaceWinner } from "@/lib/results-csv";
+import { getRaceDraft } from "@/lib/github";
 
 export type ResultsNewsPrefill = {
   date: string;
@@ -34,14 +35,6 @@ function formatWinnerLine(winner: RaceWinner): string {
 function formatWinnerInline(winner: { name: string; club: string; time: string }) {
   const clubPart = winner.club ? ` (${winner.club})` : "";
   return `${winner.name}${clubPart} in ${formatTime(winner.time)}`;
-}
-
-function toRaceTitle(raceId: string): string {
-  return raceId
-    .split(/[-_]+/)
-    .filter((part) => part.length > 0)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
 }
 
 function toOrdinal(day: number): string {
@@ -95,14 +88,15 @@ function buildLeadSentence(raceTitle: string, leadDate: string, winners: RaceWin
   return `Results are now available for the ${raceTitle} race on ${leadDate}.`;
 }
 
-export function buildResultsNewsPrefill({
+export async function buildResultsNewsPrefill({
   raceId,
   year,
   csvText,
   dateIso = new Date().toISOString().slice(0, 10),
-}: ResultsNewsTemplateInput): ResultsNewsPrefill {
+}: ResultsNewsTemplateInput): Promise<ResultsNewsPrefill> {
   const { winners, nEntrants } = extractRaceResultsWinnerSummary(csvText);
-  const raceTitle = toRaceTitle(raceId);
+  const race = await getRaceDraft(raceId);
+  const raceTitle = race?.title.trim() || raceId;
   const leadDate = formatLeadDate(dateIso);
   const title = `${raceTitle} ${year} results`;
   const excerpt = buildLeadSentence(raceTitle, leadDate, winners);

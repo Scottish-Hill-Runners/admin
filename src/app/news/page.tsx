@@ -4,7 +4,7 @@ import { NewsEditorForm } from "@/components/news-editor-form";
 import { getEditorSession } from "@/lib/auth-session";
 import { getEditorResultsSubmissionDraft, listNewsDrafts, suggestNewsSlugSuffixForDate } from "@/lib/github";
 import { isIsoNewsDate } from "@/lib/news-slug";
-import { buildResultsNewsPrefill } from "@/lib/results-news-template";
+import { buildResultsNewsPrefill, type ResultsNewsPrefill } from "@/lib/results-news-template";
 import { requireEditorAccess } from "@/lib/route-protection";
 
 type NewsPageProps = {
@@ -43,7 +43,7 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
   const returnToWorkflowUrl = toSafeReturnPath(params?.returnToWorkflow);
   const sourceResultsSubmission = toPositiveInt(params?.fromResultsSubmission);
 
-  let submissionPrefill: ReturnType<typeof buildResultsNewsPrefill> | null = null;
+  let submissionPrefill: ResultsNewsPrefill | null = null;
   let submissionWarning: string | null = null;
 
   if (sourceResultsSubmission) {
@@ -58,7 +58,7 @@ export default async function NewsPage({ searchParams }: NewsPageProps) {
       if (!resultsSubmission) {
         submissionWarning = `Could not load request #${sourceResultsSubmission}. Save results again and retry this step.`;
       } else {
-        submissionPrefill = buildResultsNewsPrefill({
+        submissionPrefill = await buildResultsNewsPrefill({
           raceId: resultsSubmission.raceId,
           year: resultsSubmission.year,
           csvText: resultsSubmission.csvText,
