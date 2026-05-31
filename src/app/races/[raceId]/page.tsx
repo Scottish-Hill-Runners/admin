@@ -1,21 +1,34 @@
 import Link from "next/link";
 import { EditorialShell } from "@/components/editorial-shell";
 import { RaceEditorForm } from "@/components/race-editor-form";
-import { getRaceDraft, listRaceResultsDrafts } from "@/lib/github";
+import { getRaceDraft, toSafeGitRef } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
 
 type RaceEditPageProps = {
   params: Promise<{ raceId: string }>;
+  searchParams?: Promise<{ returnToWorkflow?: string; ref?: string }>;
 };
 
-export default async function RaceEditPage({ params }: RaceEditPageProps) {
+function toSafeReturnPath(value: string | undefined): string | undefined {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+export default async function RaceEditPage({ params, searchParams }: RaceEditPageProps) {
   const { raceId } = await params;
+  const rawSearch = await searchParams;
+  const returnToWorkflow = toSafeReturnPath(rawSearch?.returnToWorkflow);
+  const ref = toSafeGitRef(rawSearch?.ref);
+  const returnSuffix = returnToWorkflow
+    ? `?returnToWorkflow=${encodeURIComponent(returnToWorkflow)}`
+    : "";
   await requireEditorAccess({ callbackUrl: `/races/${raceId}` });
 
-  const [initialValues, resultItems] = await Promise.all([
-    getRaceDraft(raceId),
-    listRaceResultsDrafts(raceId),
-  ]);
+  const initialValues = await getRaceDraft(raceId, { ref });
 
   return (
     <EditorialShell
@@ -24,83 +37,17 @@ export default async function RaceEditPage({ params }: RaceEditPageProps) {
       description={`Edit metadata and route description for ${initialValues?.title ?? raceId}.`}
     >
       <nav className="flex flex-wrap items-center gap-2 text-sm text-stone-600">
-        <Link href="/races" className="hover:text-stone-900 hover:underline underline-offset-4">
+        <Link href={`/races${returnSuffix}`} className="hover:text-stone-900 hover:underline underline-offset-4">
           Races
         </Link>
         <span aria-hidden="true">›</span>
         <span className="font-semibold text-stone-900">{raceId}</span>
       </nav>
 
-      {/* ── Race management panel ──────────────────────────── */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        {/* Results card */}
-        <div className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
-          <h2 className="font-[family:var(--font-heading)] text-xl text-stone-900">
-            Results
-          </h2>
-          {resultItems.length > 0 ? (
-            <ul className="mt-3 flex flex-wrap gap-2">
-              {resultItems.map((item) => (
-                <li key={item.year}>
-                  <Link
-                    href={`/results/${encodeURIComponent(raceId)}/${item.year}`}
-                    className="inline-block rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-sm font-medium text-stone-700 transition hover:border-stone-400 hover:bg-white"
-                  >
-                    {item.year}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-3 text-sm text-stone-400">No results yet.</p>
-          )}
-          <Link
-            href={`/results/${encodeURIComponent(raceId)}`}
-            className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 hover:text-amber-800 hover:underline underline-offset-4"
-          >
-            <span>Manage results</span>
-            <span aria-hidden="true">→</span>
-          </Link>
-        </div>
-
-        {/* Assets card */}
-        <div className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
-          <h2 className="font-[family:var(--font-heading)] text-xl text-stone-900">
-            Map &amp; Route
-          </h2>
-          <p className="mt-3 text-sm text-stone-500">
-            Upload a map image or GPX route file for this race.
-          </p>
-          <Link
-            href={`/race-assets/${encodeURIComponent(raceId)}`}
-            className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 hover:text-amber-800 hover:underline underline-offset-4"
-          >
-            <span>Upload assets</span>
-            <span aria-hidden="true">→</span>
-          </Link>
-        </div>
-
-        {/* Images card */}
-        <div className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
-          <h2 className="font-[family:var(--font-heading)] text-xl text-stone-900">
-            Race Photos
-          </h2>
-          <p className="mt-3 text-sm text-stone-500">
-            Upload race photos and update this race&apos;s image list.
-          </p>
-          <Link
-            href={`/races/${encodeURIComponent(raceId)}/images`}
-            className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700 hover:text-amber-800 hover:underline underline-offset-4"
-          >
-            <span>Upload images</span>
-            <span aria-hidden="true">→</span>
-          </Link>
-        </div>
-      </div>
-
       <RaceEditorForm
         key={initialValues?.raceId ?? raceId}
         initialValues={initialValues}
+        returnToWorkflowUrl={returnToWorkflow}
       />
     </EditorialShell>
   );

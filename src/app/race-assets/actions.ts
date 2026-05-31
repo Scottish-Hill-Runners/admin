@@ -21,12 +21,28 @@ export type RaceAssetsActionState = {
   prUrl?: string;
   prNumber?: number;
   gpxSummary?: string;
+  redirectToWorkflowUrl?: string;
 };
+
+function toSafeReturnPath(value: FormDataEntryValue | null): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
 
 export async function uploadRaceAssets(
   _prev: RaceAssetsActionState,
   formData: FormData,
 ): Promise<RaceAssetsActionState> {
+  const returnToWorkflowUrl = toSafeReturnPath(formData.get("returnToWorkflowUrl"));
+
   // --- validate raceId ---
   const raceId = String(formData.get("raceId") ?? "").trim();
   if (!RACE_ID_RE.test(raceId)) {
@@ -209,10 +225,13 @@ export async function uploadRaceAssets(
 
     return {
       status: "success",
-      message: `PR #${prResult.prNumber} created successfully.`,
+      message: returnToWorkflowUrl
+        ? `PR #${prResult.prNumber} created successfully. Returning to your workflow.`
+        : `PR #${prResult.prNumber} created successfully.`,
       prUrl: prResult.prUrl,
       prNumber: prResult.prNumber,
       gpxSummary,
+      redirectToWorkflowUrl: returnToWorkflowUrl,
     };
   } catch (err) {
     if (isGitHubAccessError(err)) {

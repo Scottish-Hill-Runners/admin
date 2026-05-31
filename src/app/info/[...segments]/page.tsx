@@ -1,19 +1,22 @@
 import Link from "next/link";
 import { EditorialShell } from "@/components/editorial-shell";
 import { InfoEditorForm } from "@/components/info-editor-form";
-import { getInfoDraft } from "@/lib/github";
+import { getInfoDraft, toSafeGitRef } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
 
 type InfoEditPageProps = {
   params: Promise<{ segments: string[] }>;
+  searchParams?: Promise<{ ref?: string }>;
 };
 
-export default async function InfoEditPage({ params }: InfoEditPageProps) {
+export default async function InfoEditPage({ params, searchParams }: InfoEditPageProps) {
   const { segments } = await params;
+  const rawSearch = await searchParams;
+  const ref = toSafeGitRef(rawSearch?.ref);
   const filePath = segments.join("/");
   await requireEditorAccess({ callbackUrl: `/info/${segments.map(encodeURIComponent).join("/")}` });
 
-  const initialValues = await getInfoDraft(filePath);
+  const initialValues = await getInfoDraft(filePath, { ref });
 
   return (
     <EditorialShell

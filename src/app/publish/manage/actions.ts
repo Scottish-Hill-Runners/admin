@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  closePullRequest,
   isGitHubAccessError,
   mergePullRequest,
   publishAndMergeToLive,
@@ -44,6 +45,41 @@ export async function acceptSubmissionAction(
         error instanceof Error
           ? error.message
           : "This submission can't be accepted right now — it may have a conflict. Contact an administrator if the problem continues.",
+    };
+  }
+}
+
+export async function rejectSubmissionAction(
+  previousState: ManageActionState,
+  formData: FormData
+): Promise<ManageActionState> {
+  void previousState;
+
+  await requirePublisherAccess();
+
+  const raw = formData.get("pullNumber");
+  const pullNumber = Number(raw);
+  if (!Number.isInteger(pullNumber) || pullNumber <= 0) {
+    return { status: "error", message: "Invalid submission reference." };
+  }
+
+  try {
+    await closePullRequest(pullNumber);
+    return { status: "success", message: "Submission rejected." };
+  } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
+    return {
+      status: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "This submission can't be rejected right now. Contact an administrator if the problem continues.",
     };
   }
 }

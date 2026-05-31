@@ -1,18 +1,41 @@
 import Link from "next/link";
-import { AssetManifestEditorForm } from "@/components/asset-manifest-editor-form";
 import { EditorialShell } from "@/components/editorial-shell";
 import {
-  saveCommitteePortraitsDraft,
-  uploadCommitteePortraitsDraft,
+  submitCommitteePortraitsDraft,
+  type RaceImagesSubmitState,
 } from "@/app/collections/actions";
-import { getCommitteePortraitsDraft } from "@/lib/github";
+import { SharedImageUploadForm } from "@/components/shared-image-upload-form";
+import { getCommitteePortraitsDraft, toSafeGitRef } from "@/lib/github";
 import { parseAndValidateCommitteePortraitsYaml } from "@/lib/collections-yaml";
 import { requireEditorAccess } from "@/lib/route-protection";
 
-export default async function CommitteeCollectionsPage() {
-  await requireEditorAccess({ callbackUrl: "/collections/committee" });
+const initialState: RaceImagesSubmitState = { status: "idle" };
 
-  const yamlText = await getCommitteePortraitsDraft();
+type CommitteeCollectionsPageProps = {
+  searchParams?: Promise<{ returnToWorkflow?: string; ref?: string }>;
+};
+
+function toSafeReturnPath(value: string | undefined): string | undefined {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+export default async function CommitteeCollectionsPage({ searchParams }: CommitteeCollectionsPageProps) {
+  const params = searchParams ? await searchParams : undefined;
+  const returnToWorkflowUrl = toSafeReturnPath(params?.returnToWorkflow);
+  const ref = toSafeGitRef(params?.ref);
+
+  await requireEditorAccess({
+    callbackUrl: returnToWorkflowUrl
+      ? `/collections/committee?returnToWorkflow=${encodeURIComponent(returnToWorkflowUrl)}`
+      : "/collections/committee",
+  });
+
+  const yamlText = await getCommitteePortraitsDraft({ ref });
   let currentCount: number | undefined;
   let loadError: string | null = null;
 
@@ -41,27 +64,35 @@ export default async function CommitteeCollectionsPage() {
         <span className="font-semibold text-stone-900">Committee</span>
       </nav>
 
-      <AssetManifestEditorForm
-        uploadAction={uploadCommitteePortraitsDraft}
-        saveAction={saveCommitteePortraitsDraft}
-        uploadPathPrefix="blobs/portraits"
+      {returnToWorkflowUrl ? (
+        <div className="mt-4">
+          <Link
+            href={returnToWorkflowUrl}
+            className="inline-flex items-center rounded-full border border-stone-900/15 bg-white px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
+          >
+            Back to workflow
+          </Link>
+        </div>
+      ) : null}
+
+      {loadError ? (
+        <p className="mt-5 rounded-2xl border border-amber-400/30 bg-amber-900/20 px-4 py-3 text-sm text-amber-200">
+          {loadError}
+        </p>
+      ) : null}
+
+      <SharedImageUploadForm
+        action={submitCommitteePortraitsDraft}
+        initialState={initialState}
+        returnToWorkflowUrl={returnToWorkflowUrl}
+        currentImageCount={currentCount}
         uploadHeading="Upload committee portraits"
-        uploadDescription="Upload profile images into blobs/portraits."
-        metadataHeading="Update committee portrait list"
-        metadataDescription="Register one portrait at a time with its tier and tags."
-        pathHelp="Committee portrait entries should point at blobs/portraits/... paths."
-        fileFieldLabel="Image files"
-        fileAccept="image/jpeg,image/png,image/webp,image/gif"
-        previewMode="image"
-        defaultTier="profile"
-        defaultTags="portrait, committee"
-        pathPlaceholder="blobs/portraits/committee-member.jpg"
-        currentCount={currentCount}
-        loadError={loadError}
-        saveButtonLabel="Save committee portrait list"
-        savePendingLabel="Saving…"
-        uploadButtonLabel="Upload and save"
-        uploadPendingLabel="Uploading…"
+        uploadDescription="Select profile images for committee portraits. Paths are generated automatically in blobs/portraits."
+        includeCaptionYear={false}
+        showHeroOption={false}
+        assumedIndividualsDepicted={true}
+        allowIndividualsDepictedToggle={false}
+        canSubmit={!loadError}
       />
     </EditorialShell>
   );

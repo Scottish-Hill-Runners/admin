@@ -7,11 +7,28 @@ import { requireEditorAccess } from "@/lib/route-protection";
 
 type RaceImagesPageProps = {
   params: Promise<{ raceId: string }>;
+  searchParams?: Promise<{ returnToWorkflow?: string }>;
 };
 
-export default async function RaceImagesPage({ params }: RaceImagesPageProps) {
+function toSafeReturnPath(value: string | undefined): string | undefined {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+export default async function RaceImagesPage({ params, searchParams }: RaceImagesPageProps) {
   const { raceId } = await params;
-  await requireEditorAccess({ callbackUrl: `/races/${raceId}/images` });
+  const paramsWithQuery = searchParams ? await searchParams : undefined;
+  const returnToWorkflowUrl = toSafeReturnPath(paramsWithQuery?.returnToWorkflow);
+
+  await requireEditorAccess({
+    callbackUrl: returnToWorkflowUrl
+      ? `/races/${raceId}/images?returnToWorkflow=${encodeURIComponent(returnToWorkflowUrl)}`
+      : `/races/${raceId}/images`,
+  });
 
   const [raceDraft, raceImagesYaml] = await Promise.all([
     getRaceDraft(raceId),
@@ -51,6 +68,7 @@ export default async function RaceImagesPage({ params }: RaceImagesPageProps) {
         fixedRaceSlug={raceId}
         raceExists={raceExists}
         currentImageCount={imageCount}
+        returnToWorkflowUrl={returnToWorkflowUrl}
       />
     </EditorialShell>
   );

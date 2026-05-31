@@ -11,15 +11,17 @@ const tagSchema = z.string().min(1, "Tags cannot be empty.");
 const imageAssetItemSchema = z.object({
   path: blobPathSchema,
   tier: z.string().min(1, "Tier is required."),
-  tags: z.array(tagSchema).min(1, "At least one tag is required."),
+  tags: z.array(tagSchema).default([]),
+  license: z.enum(RACE_IMAGE_LICENSE_IDS).optional(),
+  copyrightConfirmed: z.boolean().optional(),
+  individualsDepicted: z.boolean().optional(),
+  individualsConsent: z.boolean().optional(),
 });
 
-const documentAssetItemSchema = z.object({
-  path: blobPathSchema,
-  tier: z.string().min(1, "Tier is required."),
-  tags: z.array(tagSchema).min(1, "At least one tag is required."),
+const documentAssetItemSchema = imageAssetItemSchema.extend({
+  tags: z.array(tagSchema).default([]),
   title: z.string().min(1, "Title is required."),
-  description: z.string().min(1, "Description is required."),
+  description: z.string().min(1, "Description is required.").optional(),
 });
 
 const raceImageItemSchema = z.object({

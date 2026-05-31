@@ -7,12 +7,14 @@ import type { RaceListItem } from "@/lib/content-types";
 type RaceSearchListProps = {
   raceItems: RaceListItem[];
   hrefPrefix: string;
+  hrefSuffix?: string;
   emptyMessage?: string;
 };
 
 export function RaceSearchList({
   raceItems,
   hrefPrefix,
+  hrefSuffix = "",
   emptyMessage = "No races found.",
 }: RaceSearchListProps) {
   const [query, setQuery] = useState("");
@@ -56,7 +58,7 @@ export function RaceSearchList({
           {filtered.map((item) => (
             <li key={item.raceId}>
               <Link
-                href={`${hrefPrefix}/${encodeURIComponent(item.raceId)}`}
+                href={`${hrefPrefix}/${encodeURIComponent(item.raceId)}${hrefSuffix}`}
                 className="block rounded-2xl border border-stone-900/10 bg-stone-50 px-5 py-4 text-sm font-semibold text-stone-900 transition hover:border-stone-900/25 hover:bg-white"
               >
                 {item.raceId}

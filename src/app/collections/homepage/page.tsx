@@ -1,18 +1,41 @@
 import Link from "next/link";
-import { AssetManifestEditorForm } from "@/components/asset-manifest-editor-form";
-import { EditorialShell } from "@/components/editorial-shell";
 import {
-  saveHomepageImagesDraft,
   uploadHomepageImagesDraft,
+  type RaceImagesSubmitState,
 } from "@/app/collections/actions";
-import { getHomepageImagesDraft } from "@/lib/github";
+import { EditorialShell } from "@/components/editorial-shell";
+import { SharedImageUploadForm } from "@/components/shared-image-upload-form";
+import { getHomepageImagesDraft, toSafeGitRef } from "@/lib/github";
 import { parseAndValidateHomepageImagesYaml } from "@/lib/collections-yaml";
 import { requireEditorAccess } from "@/lib/route-protection";
 
-export default async function HomepageCollectionsPage() {
-  await requireEditorAccess({ callbackUrl: "/collections/homepage" });
+const initialState: RaceImagesSubmitState = { status: "idle" };
 
-  const yamlText = await getHomepageImagesDraft();
+type HomepageCollectionsPageProps = {
+  searchParams?: Promise<{ returnToWorkflow?: string; ref?: string }>;
+};
+
+function toSafeReturnPath(value: string | undefined): string | undefined {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+export default async function HomepageCollectionsPage({ searchParams }: HomepageCollectionsPageProps) {
+  const params = searchParams ? await searchParams : undefined;
+  const returnToWorkflowUrl = toSafeReturnPath(params?.returnToWorkflow);
+  const ref = toSafeGitRef(params?.ref);
+
+  await requireEditorAccess({
+    callbackUrl: returnToWorkflowUrl
+      ? `/collections/homepage?returnToWorkflow=${encodeURIComponent(returnToWorkflowUrl)}`
+      : "/collections/homepage",
+  });
+
+  const yamlText = await getHomepageImagesDraft({ ref });
   let currentCount: number | undefined;
   let loadError: string | null = null;
 
@@ -31,7 +54,7 @@ export default async function HomepageCollectionsPage() {
     <EditorialShell
       eyebrow="Homepage"
       title="Homepage image editor"
-      description="Upload homepage-ready artwork and register image metadata for the site home page."
+      description="Upload homepage-ready artwork and add tags for each image."
     >
       <nav className="flex flex-wrap items-center gap-2 text-sm text-stone-600">
         <Link href="/collections" className="hover:text-stone-900 hover:underline underline-offset-4">
@@ -41,27 +64,35 @@ export default async function HomepageCollectionsPage() {
         <span className="font-semibold text-stone-900">Homepage</span>
       </nav>
 
-      <AssetManifestEditorForm
-        uploadAction={uploadHomepageImagesDraft}
-        saveAction={saveHomepageImagesDraft}
-        uploadPathPrefix="blobs/homepage"
+      {returnToWorkflowUrl ? (
+        <div className="mt-4">
+          <Link
+            href={returnToWorkflowUrl}
+            className="inline-flex items-center rounded-full border border-stone-900/15 bg-white px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
+          >
+            Back to workflow
+          </Link>
+        </div>
+      ) : null}
+
+      {loadError ? (
+        <p className="mt-5 rounded-2xl border border-amber-400/30 bg-amber-900/20 px-4 py-3 text-sm text-amber-200">
+          {loadError}
+        </p>
+      ) : null}
+
+      <SharedImageUploadForm
+        action={uploadHomepageImagesDraft}
+        initialState={initialState}
+        returnToWorkflowUrl={returnToWorkflowUrl}
+        currentImageCount={currentCount}
         uploadHeading="Upload homepage images"
-        uploadDescription="Upload images into blobs/homepage. Existing race assets can still be linked manually in the homepage image list when needed."
-        metadataHeading="Update homepage image list"
-        metadataDescription="Register one image entry at a time with its tier and tags."
-        pathHelp="Homepage entries may reference any valid blobs/... path, including reused race photos."
-        fileFieldLabel="Image files"
-        fileAccept="image/jpeg,image/png,image/webp,image/gif"
-        previewMode="image"
-        defaultTier="strong"
-        defaultTags="landscape, mountains"
-        pathPlaceholder="blobs/homepage/banner-shot.jpg"
-        currentCount={currentCount}
-        loadError={loadError}
-        saveButtonLabel="Save homepage image list"
-        savePendingLabel="Saving…"
-        uploadButtonLabel="Upload and save"
-        uploadPendingLabel="Uploading…"
+        uploadDescription="Select up to 20 images for homepage display. Paths are generated automatically in blobs/homepage."
+        includeCaptionYear={false}
+        showHeroOption={false}
+        allowIndividualsDepictedToggle
+        canSubmit={!loadError}
+        cannotSubmitMessage={loadError ?? undefined}
       />
     </EditorialShell>
   );

@@ -404,7 +404,6 @@ export default function CheckpointMapEditor({
       mapRef.current = null;
     };
     // Re-mount only when gpxText changes (new file selected)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpxText]);
 
   // ── checkpoint field handlers ───────────────────────────────────────────────

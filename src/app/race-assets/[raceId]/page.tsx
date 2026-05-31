@@ -5,12 +5,28 @@ import { requireEditorAccess } from "@/lib/route-protection";
 
 type RaceAssetsDetailPageProps = {
   params: Promise<{ raceId: string }>;
+  searchParams?: Promise<{ returnToWorkflow?: string }>;
 };
+
+function toSafeReturnPath(value: string | undefined): string | undefined {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
 
 export default async function RaceAssetsDetailPage({
   params,
+  searchParams,
 }: RaceAssetsDetailPageProps) {
   const { raceId } = await params;
+  const rawSearch = await searchParams;
+  const returnToWorkflow = toSafeReturnPath(rawSearch?.returnToWorkflow);
+  const returnSuffix = returnToWorkflow
+    ? `?returnToWorkflow=${encodeURIComponent(returnToWorkflow)}`
+    : "";
   await requireEditorAccess({ callbackUrl: `/race-assets/${raceId}` });
 
   return (
@@ -21,7 +37,7 @@ export default async function RaceAssetsDetailPage({
     >
       <nav className="flex flex-wrap items-center gap-2 text-sm text-stone-600">
         <Link
-          href="/race-assets"
+          href={`/race-assets${returnSuffix}`}
           className="hover:text-stone-900 hover:underline underline-offset-4"
         >
           Race Assets
@@ -30,7 +46,7 @@ export default async function RaceAssetsDetailPage({
         <span className="font-semibold text-stone-900">{raceId}</span>
       </nav>
 
-      <RaceAssetsUploadForm fixedRaceId={raceId} />
+      <RaceAssetsUploadForm fixedRaceId={raceId} returnToWorkflowUrl={returnToWorkflow} />
     </EditorialShell>
   );
 }

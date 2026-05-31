@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 import { saveRaceDraft, type RaceActionState } from "@/app/races/actions";
 import { MarkdownEditorField } from "@/components/markdown-editor-field";
 import { useFormDraft } from "@/lib/use-form-draft";
@@ -21,6 +22,7 @@ type InputProps = {
 
 type RaceEditorFormProps = {
   initialValues?: RaceInfoFormData | null;
+  returnToWorkflowUrl?: string;
 };
 
 function InputField({ label, name, placeholder, defaultValue, errors }: InputProps) {
@@ -44,7 +46,8 @@ function InputField({ label, name, placeholder, defaultValue, errors }: InputPro
   );
 }
 
-export function RaceEditorForm({ initialValues }: RaceEditorFormProps) {
+export function RaceEditorForm({ initialValues, returnToWorkflowUrl }: RaceEditorFormProps) {
+  const router = useRouter();
   const [state, formAction, isPending] = useActionState(saveRaceDraft, initialState);
   const formId = useId();
   const storageKey = initialValues ? `draft:race:${initialValues.raceId}` : "draft:race:new";
@@ -57,6 +60,14 @@ export function RaceEditorForm({ initialValues }: RaceEditorFormProps) {
   useEffect(() => {
     if (state.status === "success") clearDraft();
   }, [state.status, clearDraft]);
+
+  useEffect(() => {
+    if (state.status !== "success" || !state.redirectToWorkflowUrl) {
+      return;
+    }
+
+    router.push(state.redirectToWorkflowUrl);
+  }, [router, state.redirectToWorkflowUrl, state.status]);
 
   return (
     <form
@@ -71,6 +82,9 @@ export function RaceEditorForm({ initialValues }: RaceEditorFormProps) {
         }
       }}
     >
+      {returnToWorkflowUrl ? (
+        <input type="hidden" name="returnToWorkflowUrl" value={returnToWorkflowUrl} />
+      ) : null}
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <div className="grid gap-5 md:grid-cols-2">
           <InputField

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 import { saveLongDistanceDraft, type LongDistanceActionState } from "@/app/long-distance/actions";
 import { MarkdownEditorField } from "@/components/markdown-editor-field";
 import { useFormDraft } from "@/lib/use-form-draft";
@@ -19,6 +20,7 @@ type InputProps = {
 
 type LongDistanceEditorFormProps = {
   initialValues?: LongDistanceFormData | null;
+  returnToWorkflowUrl?: string;
 };
 
 function InputField({ label, name, placeholder, defaultValue, errors }: InputProps) {
@@ -42,7 +44,8 @@ function InputField({ label, name, placeholder, defaultValue, errors }: InputPro
   );
 }
 
-export function LongDistanceEditorForm({ initialValues }: LongDistanceEditorFormProps) {
+export function LongDistanceEditorForm({ initialValues, returnToWorkflowUrl }: LongDistanceEditorFormProps) {
+  const router = useRouter();
   const [state, formAction, isPending] = useActionState(saveLongDistanceDraft, initialState);
   const formId = useId();
   const storageKey = initialValues ? `draft:long-distance:${initialValues.slug}` : "draft:long-distance:new";
@@ -55,6 +58,14 @@ export function LongDistanceEditorForm({ initialValues }: LongDistanceEditorForm
   useEffect(() => {
     if (state.status === "success") clearDraft();
   }, [state.status, clearDraft]);
+
+  useEffect(() => {
+    if (state.status !== "success" || !state.redirectToWorkflowUrl) {
+      return;
+    }
+
+    router.push(state.redirectToWorkflowUrl);
+  }, [router, state.redirectToWorkflowUrl, state.status]);
 
   return (
     <form
@@ -69,6 +80,9 @@ export function LongDistanceEditorForm({ initialValues }: LongDistanceEditorForm
         }
       }}
     >
+      {returnToWorkflowUrl ? (
+        <input type="hidden" name="returnToWorkflowUrl" value={returnToWorkflowUrl} />
+      ) : null}
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <div className="grid gap-5 md:grid-cols-2">
           <InputField

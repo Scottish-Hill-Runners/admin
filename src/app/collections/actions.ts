@@ -66,6 +66,8 @@ export type UploadAssetsState = {
   fieldErrors?: {
     assetFiles?: string[];
   };
+  uploadedPaths?: string[];
+  redirectToWorkflowUrl?: string;
 };
 
 export type AssetMetadataState = {
@@ -81,6 +83,7 @@ export type AssetMetadataState = {
     imagePaths?: string[];
     heroImagePath?: string[];
   };
+  redirectToWorkflowUrl?: string;
 };
 
 export type RaceImagesSubmitState = {
@@ -93,7 +96,33 @@ export type RaceImagesSubmitState = {
   };
   prUrl?: string;
   prNumber?: number;
+  redirectToWorkflowUrl?: string;
 };
+
+export type DocumentsSubmitState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  fieldErrors?: {
+    assetFiles?: string[];
+    documentsMetadata?: string[];
+  };
+  prUrl?: string;
+  prNumber?: number;
+  redirectToWorkflowUrl?: string;
+};
+
+function toSafeReturnPath(value: FormDataEntryValue | null): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
 
 type UploadOptions = {
   targetFolder: string;
@@ -164,6 +193,7 @@ async function uploadAssetFilesDraft(
   options: UploadOptions
 ): Promise<UploadAssetsState> {
   await requireEditorAccess();
+  const returnToWorkflowUrl = toSafeReturnPath(formData.get("returnToWorkflowUrl"));
 
   const selectedAssetFiles = formData
     .getAll("assetFiles")
@@ -279,7 +309,11 @@ async function uploadAssetFilesDraft(
 
     return {
       status: "success",
-      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
+      message: returnToWorkflowUrl
+        ? `Saved draft #${result.prNumber}: ${result.prUrl}. Returning to your workflow.`
+        : `Saved draft #${result.prNumber}: ${result.prUrl}`,
+      uploadedPaths: files.map((file) => file.path),
+      redirectToWorkflowUrl: returnToWorkflowUrl,
     };
   } catch (error) {
     if (isGitHubAccessError(error)) {
@@ -332,13 +366,493 @@ export async function uploadHomepageImagesDraft(
   _previousState: UploadAssetsState,
   formData: FormData
 ): Promise<UploadAssetsState> {
-  return uploadAssetFilesDraft(formData, {
-    targetFolder: "blobs/homepage",
-    branchPrefix: "homepage-assets",
-    contentLabel: "homepage images",
-    fileLabel: "image files",
-    mode: "image",
-  });
+  await requireEditorAccess();
+  const returnToWorkflowUrl = toSafeReturnPath(formData.get("returnToWorkflowUrl"));
+
+  const selectedAssetFiles = formData
+    .getAll("assetFiles")
+    .filter((value): value is File => value instanceof File && value.size > 0);
+  const selectedImageFiles = formData
+    .getAll("imageFiles")
+    .filter((value): value is File => value instanceof File && value.size > 0);
+  const assetFiles = selectedAssetFiles.length > 0 ? selectedAssetFiles : selectedImageFiles;
+
+  if (assetFiles.length === 0) {
+    return {
+      status: "error",
+      message: "Select at least one image file before submitting.",
+      fieldErrors: {
+        assetFiles: ["Select one or more image files before submitting."],
+      },
+    };
+  }
+
+  if (assetFiles.length > MAX_UPLOAD_FILES) {
+    return {
+      status: "error",
+      message: `Upload up to ${MAX_UPLOAD_FILES} files per submission.`,
+      fieldErrors: {
+        assetFiles: [`Too many files selected (${assetFiles.length}).`],
+      },
+    };
+  }
+
+  const fileValidationErrors: string[] = [];
+  for (const file of assetFiles) {
+    if (!allowedImageMimeTypes.has(file.type)) {
+      fileValidationErrors.push(`${file.name}: unsupported file type (${file.type || "unknown"}).`);
+    }
+
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      fileValidationErrors.push(`${file.name}: file is larger than 10MB.`);
+    }
+  }
+
+  if (fileValidationErrors.length > 0) {
+    return {
+      status: "error",
+      message: "Fix the upload issues and try again.",
+      fieldErrors: {
+        assetFiles: fileValidationErrors,
+      },
+    };
+  }
+
+  let parsedMetadataArray: unknown;
+  try {
+    parsedMetadataArray = JSON.parse(String(formData.get("imagesMetadata") ?? "[]"));
+  } catch {
+    return {
+      status: "error",
+      message: "Image metadata is invalid. Please review and try again.",
+      fieldErrors: {
+        imagesMetadata: ["Image metadata is invalid."],
+      },
+    };
+  }
+
+  const metadataResult = z.array(perImageMetadataSchema).safeParse(parsedMetadataArray);
+  if (!metadataResult.success) {
+    const issues = metadataResult.error.issues.map((issue) => issue.message);
+    return {
+      status: "error",
+      message: "Please fix the highlighted fields before continuing.",
+      fieldErrors: {
+        imagesMetadata: issues,
+      },
+    };
+  }
+
+  const metadataArray = metadataResult.data;
+  if (metadataArray.length !== assetFiles.length) {
+    return {
+      status: "error",
+      message: "Image metadata count does not match file count.",
+      fieldErrors: {
+        imagesMetadata: ["Image metadata count does not match file count."],
+      },
+    };
+  }
+
+  const uncheckedCopyright = metadataArray
+    .map((metadata, index) => (!metadata.copyrightConfirmed ? index + 1 : null))
+    .filter((index): index is number => index !== null);
+  if (uncheckedCopyright.length > 0) {
+    return {
+      status: "error",
+      message: "Confirm you have the rights for all images before submitting.",
+      fieldErrors: {
+        imagesMetadata: [
+          `Copyright must be confirmed for image${uncheckedCopyright.length === 1 ? "" : "s"} ${uncheckedCopyright.join(", ")}.`,
+        ],
+      },
+    };
+  }
+
+  const missingConsent = metadataArray
+    .map((metadata, index) =>
+      metadata.individualsDepicted && !metadata.individualsConsent ? index + 1 : null
+    )
+    .filter((index): index is number => index !== null);
+  if (missingConsent.length > 0) {
+    return {
+      status: "error",
+      message: "Consent is required when identifiable individuals appear in an image.",
+      fieldErrors: {
+        imagesMetadata: [
+          `Consent must be confirmed for image${missingConsent.length === 1 ? "" : "s"} ${missingConsent.join(", ")}.`,
+        ],
+      },
+    };
+  }
+
+  const yamlText = await getHomepageImagesDraft();
+  if (!yamlText) {
+    return {
+      status: "error",
+      message: "Could not load the homepage image list from the content store.",
+    };
+  }
+
+  const validated = parseAndValidateHomepageImagesYaml(yamlText);
+  if (!validated.data) {
+    return {
+      status: "error",
+      message: validated.error ?? "The homepage image list is not valid.",
+    };
+  }
+
+  try {
+    const processedImages = await Promise.all(
+      assetFiles.map(async (file, index) => {
+        const optimized = await optimizeUploadedImage({
+          file,
+          maxBytes: MAX_UPLOAD_SIZE_BYTES,
+          preset: "racePhoto",
+        });
+        const hashName = computeHashFilename(optimized.buffer, optimized.outputExtension);
+
+        return {
+          path: `blobs/homepage/${hashName}`,
+          content: optimized.buffer.toString("base64"),
+          encoding: "base64" as const,
+          metadata: metadataArray[index],
+        };
+      })
+    );
+
+    const nextData = structuredClone(validated.data);
+    const existingPaths = new Set(nextData.images.map((item) => item.path));
+    const duplicatePaths = processedImages.filter((item) => existingPaths.has(item.path));
+    if (duplicatePaths.length > 0) {
+      return {
+        status: "error",
+        message: "Some selected images are already in the homepage image list.",
+        fieldErrors: {
+          assetFiles: duplicatePaths.map((item) => `${item.path}: already exists in homepage image list.`),
+        },
+      };
+    }
+
+    for (const image of processedImages) {
+      nextData.images.push({
+        path: image.path,
+        tier: "strong",
+        tags: image.metadata.tags,
+        license: image.metadata.license,
+        copyrightConfirmed: image.metadata.copyrightConfirmed,
+        individualsDepicted: image.metadata.individualsDepicted,
+        individualsConsent: image.metadata.individualsDepicted
+          ? image.metadata.individualsConsent
+          : false,
+      });
+    }
+
+    const finalYaml = stringifyHomepageImagesYaml(nextData);
+    const finalValidated = parseAndValidateHomepageImagesYaml(finalYaml);
+    if (!finalValidated.data) {
+      return {
+        status: "error",
+        message: "The requested change produced invalid homepage image list content.",
+      };
+    }
+
+    const editorSession = await getEditorSession();
+    const author = buildPrAuthor(editorSession);
+    const autoMerge = formData.get("autoMerge") === "on";
+    const branchName = `shr-admin/homepage-assets-${Date.now()}`;
+    const result = await createContentPullRequestWithFiles({
+      title: `Homepage images: upload ${processedImages.length}`,
+      files: [
+        ...processedImages.map((image) => ({
+          path: image.path,
+          content: image.content,
+          encoding: image.encoding,
+        })),
+        {
+          path: "homepage/images.yaml",
+          content: Buffer.from(stringifyHomepageImagesYaml(finalValidated.data)).toString("base64"),
+          encoding: "base64" as const,
+        },
+      ],
+      commitMessage: `Upload homepage images (${processedImages.length})`,
+      prTitle: `Homepage images: upload ${processedImages.length}`,
+      prBody:
+        `Homepage image upload created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
+        `- Content repo: ${contentConfig.repo}\n` +
+        `- Images uploaded: ${processedImages.length}\n` +
+        `- Updated file: homepage/images.yaml`,
+      branchName,
+      author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
+    });
+
+    return {
+      status: "success",
+      message: returnToWorkflowUrl
+        ? `Saved draft #${result.prNumber}: ${result.prUrl}. Returning to your workflow.`
+        : `Saved draft #${result.prNumber}: ${result.prUrl}`,
+      uploadedPaths: processedImages.map((image) => image.path),
+      redirectToWorkflowUrl: returnToWorkflowUrl,
+    };
+  } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
+    return {
+      status: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to save this draft.",
+    };
+  }
+}
+
+export async function submitCommitteePortraitsDraft(
+  _previousState: RaceImagesSubmitState,
+  formData: FormData
+): Promise<RaceImagesSubmitState> {
+  await requireEditorAccess();
+  const returnToWorkflowUrl = toSafeReturnPath(formData.get("returnToWorkflowUrl"));
+
+  const imageFiles = formData
+    .getAll("imageFiles")
+    .filter((value): value is File => value instanceof File && value.size > 0);
+
+  if (imageFiles.length === 0) {
+    return {
+      status: "error",
+      message: "Select at least one image before submitting.",
+      fieldErrors: { imageFiles: ["Select at least one image before submitting."] },
+    };
+  }
+
+  if (imageFiles.length > MAX_UPLOAD_FILES) {
+    return {
+      status: "error",
+      message: `Upload up to ${MAX_UPLOAD_FILES} files per submission.`,
+      fieldErrors: { imageFiles: [`Too many files selected (${imageFiles.length}).`] },
+    };
+  }
+
+  const fileErrors: string[] = [];
+  for (const file of imageFiles) {
+    if (!allowedImageMimeTypes.has(file.type)) {
+      fileErrors.push(`${file.name}: unsupported file type (${file.type || "unknown"}).`);
+    }
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      fileErrors.push(`${file.name}: file is larger than 10 MB.`);
+    }
+  }
+  if (fileErrors.length > 0) {
+    return {
+      status: "error",
+      message: "Fix the upload issues and try again.",
+      fieldErrors: { imageFiles: fileErrors },
+    };
+  }
+
+  let parsedMetadataArray: unknown;
+  try {
+    parsedMetadataArray = JSON.parse(String(formData.get("imagesMetadata") ?? ""));
+  } catch {
+    return {
+      status: "error",
+      message: "Invalid image metadata.",
+      fieldErrors: { imagesMetadata: ["Invalid image metadata."] },
+    };
+  }
+
+  const metadataResult = z.array(perImageMetadataSchema).safeParse(parsedMetadataArray);
+  if (!metadataResult.success) {
+    const issues = metadataResult.error.issues.map((issue) => issue.message);
+    return {
+      status: "error",
+      message: "Please fix the highlighted fields before continuing.",
+      fieldErrors: { imagesMetadata: issues },
+    };
+  }
+
+  const metadataArray = metadataResult.data;
+  if (metadataArray.length !== imageFiles.length) {
+    return {
+      status: "error",
+      message: "Image metadata count does not match file count.",
+      fieldErrors: { imagesMetadata: ["Image metadata count does not match file count."] },
+    };
+  }
+
+  const uncheckedCopyright = metadataArray
+    .map((metadata, index) => (!metadata.copyrightConfirmed ? index + 1 : null))
+    .filter((index): index is number => index !== null);
+  if (uncheckedCopyright.length > 0) {
+    return {
+      status: "error",
+      message: "Confirm you have the rights for all images before submitting.",
+      fieldErrors: {
+        imagesMetadata: [
+          `Copyright must be confirmed for image${uncheckedCopyright.length === 1 ? "" : "s"} ${uncheckedCopyright.join(", ")}.`,
+        ],
+      },
+    };
+  }
+
+  const nonPortraitSelections = metadataArray
+    .map((metadata, index) => (!metadata.individualsDepicted ? index + 1 : null))
+    .filter((index): index is number => index !== null);
+  if (nonPortraitSelections.length > 0) {
+    return {
+      status: "error",
+      message: "Committee portraits must be marked as depicting individuals.",
+      fieldErrors: {
+        imagesMetadata: [
+          `Image${nonPortraitSelections.length === 1 ? "" : "s"} ${nonPortraitSelections.join(", ")} must be marked as depicting individuals.`,
+        ],
+      },
+    };
+  }
+
+  const missingConsent = metadataArray
+    .map((metadata, index) => (!metadata.individualsConsent ? index + 1 : null))
+    .filter((index): index is number => index !== null);
+  if (missingConsent.length > 0) {
+    return {
+      status: "error",
+      message: "Consent is required for committee portraits.",
+      fieldErrors: {
+        imagesMetadata: [
+          `Consent must be confirmed for image${missingConsent.length === 1 ? "" : "s"} ${missingConsent.join(", ")}.`,
+        ],
+      },
+    };
+  }
+
+  const yamlText = await getCommitteePortraitsDraft();
+  if (!yamlText) {
+    return {
+      status: "error",
+      message: "Could not load the committee portrait list from the content store.",
+    };
+  }
+
+  const validated = parseAndValidateCommitteePortraitsYaml(yamlText);
+  if (!validated.data) {
+    return {
+      status: "error",
+      message: validated.error ?? "The committee portrait list is not valid.",
+    };
+  }
+
+  try {
+    const processedImages = await Promise.all(
+      imageFiles.map(async (file, index) => {
+        const optimized = await optimizeUploadedImage({
+          file,
+          maxBytes: MAX_UPLOAD_SIZE_BYTES,
+          preset: "racePhoto",
+        });
+        const filename = computeHashFilename(optimized.buffer, optimized.outputExtension);
+        return {
+          buffer: optimized.buffer,
+          path: `blobs/portraits/${filename}`,
+          metadata: metadataArray[index],
+        };
+      })
+    );
+
+    const nextData = structuredClone(validated.data);
+    const existingPaths = new Set(nextData.portraits.map((item) => item.path));
+    const duplicatePaths = processedImages
+      .filter((image) => existingPaths.has(image.path))
+      .map((image) => image.path);
+    if (duplicatePaths.length > 0) {
+      return {
+        status: "error",
+        message: "Some images already exist in the committee portrait list.",
+        fieldErrors: {
+          imageFiles: duplicatePaths.map((path) => `Already registered: ${path}`),
+        },
+      };
+    }
+
+    for (const image of processedImages) {
+      nextData.portraits.push({
+        path: image.path,
+        tier: "profile",
+        tags: image.metadata.tags,
+        license: image.metadata.license,
+        copyrightConfirmed: image.metadata.copyrightConfirmed,
+        individualsDepicted: true,
+        individualsConsent: true,
+      });
+    }
+
+    const nextYamlText = stringifyCommitteePortraitsYaml(nextData);
+    const finalValidated = parseAndValidateCommitteePortraitsYaml(nextYamlText);
+    if (!finalValidated.data) {
+      return {
+        status: "error",
+        message: "The requested change produced invalid committee portrait list content.",
+      };
+    }
+
+    const editorSession = await getEditorSession();
+    const author = buildPrAuthor(editorSession);
+    const autoMerge = formData.get("autoMerge") === "on";
+    const branchName = `shr-admin/committee-portraits-${Date.now()}`;
+    const result = await createContentPullRequestWithFiles({
+      title: `Committee portraits: upload ${processedImages.length}`,
+      files: [
+        ...processedImages.map((image) => ({
+          path: image.path,
+          content: image.buffer.toString("base64"),
+          encoding: "base64" as const,
+        })),
+        {
+          path: "committee/portraits.yaml",
+          content: Buffer.from(stringifyCommitteePortraitsYaml(finalValidated.data)).toString("base64"),
+          encoding: "base64" as const,
+        },
+      ],
+      commitMessage: `Upload committee portraits (${processedImages.length})`,
+      prTitle: `Committee portraits: upload ${processedImages.length}`,
+      prBody:
+        `Committee portrait upload created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
+        `- Content repo: ${contentConfig.repo}\n` +
+        `- Images uploaded: ${processedImages.length}\n` +
+        `- Updated file: committee/portraits.yaml`,
+      branchName,
+      author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
+    });
+
+    return {
+      status: "success",
+      message: returnToWorkflowUrl
+        ? `Saved draft #${result.prNumber}: ${result.prUrl}. Returning to your workflow.`
+        : `Saved draft #${result.prNumber}: ${result.prUrl}`,
+      prUrl: result.prUrl,
+      prNumber: result.prNumber,
+      redirectToWorkflowUrl: returnToWorkflowUrl,
+    };
+  } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Failed to save this draft.",
+    };
+  }
 }
 
 export async function uploadDocumentsDraft(
@@ -351,19 +865,6 @@ export async function uploadDocumentsDraft(
     contentLabel: "documents",
     fileLabel: "files",
     mode: "any",
-  });
-}
-
-export async function uploadCommitteePortraitsDraft(
-  _previousState: UploadAssetsState,
-  formData: FormData
-): Promise<UploadAssetsState> {
-  return uploadAssetFilesDraft(formData, {
-    targetFolder: "blobs/portraits",
-    branchPrefix: "portrait-assets",
-    contentLabel: "committee portraits",
-    fileLabel: "image files",
-    mode: "image",
   });
 }
 
@@ -391,107 +892,12 @@ export async function uploadRaceImagesDraft(
   });
 }
 
-export async function saveHomepageImagesDraft(
-  _previousState: AssetMetadataState,
-  formData: FormData
-): Promise<AssetMetadataState> {
-  await requireEditorAccess();
-
-  const parsed = imageManifestEntrySchema.safeParse({
-    path: formData.get("path"),
-    tier: formData.get("tier"),
-    tags: formData.get("tags"),
-  });
-
-  if (!parsed.success) {
-    return {
-      status: "error",
-      message: "Please fix the highlighted fields before continuing.",
-      fieldErrors: z.flattenError(parsed.error).fieldErrors,
-    };
-  }
-
-  const yamlText = await getHomepageImagesDraft();
-  if (!yamlText) {
-    return {
-      status: "error",
-      message: "Could not load the homepage image list from the content store.",
-    };
-  }
-
-  const validated = parseAndValidateHomepageImagesYaml(yamlText);
-  if (!validated.data) {
-    return {
-      status: "error",
-      message: validated.error ?? "The homepage image list is not valid.",
-    };
-  }
-
-  const { path, tier, tags } = parsed.data;
-  const nextData = structuredClone(validated.data);
-  if (nextData.images.some((item) => item.path === path)) {
-    return {
-      status: "error",
-      message: "This path already exists in the homepage image list.",
-      fieldErrors: {
-        path: ["Duplicate path for homepage images."],
-      },
-    };
-  }
-
-  nextData.images.push({
-    path,
-    tier,
-    tags: parseTags(tags),
-  });
-
-  const nextYamlText = stringifyHomepageImagesYaml(nextData);
-  const finalValidated = parseAndValidateHomepageImagesYaml(nextYamlText);
-  if (!finalValidated.data) {
-    return {
-      status: "error",
-      message: "The requested change produced invalid homepage image list content.",
-    };
-  }
-
-  try {
-    const result = await createYamlUpdatePullRequest({
-      path: "homepage/images.yaml",
-      content: stringifyHomepageImagesYaml(finalValidated.data),
-      branchPrefix: "homepage-images-yaml",
-      prTitle: "Homepage images: update manifest",
-      commitMessage: `Update homepage/images.yaml (${path})`,
-      summary: `Added homepage image ${path}`,
-      autoMerge: formData.get("autoMerge") === "on",
-    });
-
-    return {
-      status: "success",
-      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
-    };
-  } catch (error) {
-    if (isGitHubAccessError(error)) {
-      return {
-        status: "error",
-        message: "Publishing is not set up yet. Please contact an administrator.",
-      };
-    }
-
-    return {
-      status: "error",
-      message:
-        error instanceof Error
-          ? error.message
-          : "Failed to save this draft.",
-    };
-  }
-}
-
 export async function saveDocumentsManifestDraft(
   _previousState: AssetMetadataState,
   formData: FormData
 ): Promise<AssetMetadataState> {
   await requireEditorAccess();
+  const returnToWorkflowUrl = toSafeReturnPath(formData.get("returnToWorkflowUrl"));
 
   const parsed = documentManifestEntrySchema.safeParse({
     path: formData.get("path"),
@@ -582,118 +988,10 @@ export async function saveDocumentsManifestDraft(
 
     return {
       status: "success",
-      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
-    };
-  } catch (error) {
-    if (isGitHubAccessError(error)) {
-      return {
-        status: "error",
-        message: "Publishing is not set up yet. Please contact an administrator.",
-      };
-    }
-
-    return {
-      status: "error",
-      message:
-        error instanceof Error
-          ? error.message
-          : "Failed to save this draft.",
-    };
-  }
-}
-
-export async function saveCommitteePortraitsDraft(
-  _previousState: AssetMetadataState,
-  formData: FormData
-): Promise<AssetMetadataState> {
-  await requireEditorAccess();
-
-  const parsed = imageManifestEntrySchema.safeParse({
-    path: formData.get("path"),
-    tier: formData.get("tier"),
-    tags: formData.get("tags"),
-  });
-
-  if (!parsed.success) {
-    return {
-      status: "error",
-      message: "Please fix the highlighted fields before continuing.",
-      fieldErrors: z.flattenError(parsed.error).fieldErrors,
-    };
-  }
-
-  const prefixCheck = expectPathPrefix(
-    parsed.data.path,
-    "blobs/portraits/",
-    "Portrait paths must start with blobs/portraits/."
-  );
-  if (!prefixCheck.ok) {
-    return {
-      status: "error",
-      message: prefixCheck.error,
-      fieldErrors: {
-        path: [prefixCheck.error],
-      },
-    };
-  }
-
-  const yamlText = await getCommitteePortraitsDraft();
-  if (!yamlText) {
-    return {
-      status: "error",
-      message: "Could not load the committee portrait list from the content store.",
-    };
-  }
-
-  const validated = parseAndValidateCommitteePortraitsYaml(yamlText);
-  if (!validated.data) {
-    return {
-      status: "error",
-      message: validated.error ?? "The committee portrait list is not valid.",
-    };
-  }
-
-  const { path, tier, tags } = parsed.data;
-  const nextData = structuredClone(validated.data);
-  if (nextData.portraits.some((item) => item.path === path)) {
-    return {
-      status: "error",
-      message: "This path already exists in the committee portrait list.",
-      fieldErrors: {
-        path: ["Duplicate path for committee portraits."],
-      },
-    };
-  }
-
-  nextData.portraits.push({
-    path,
-    tier,
-    tags: parseTags(tags),
-  });
-
-  const nextYamlText = stringifyCommitteePortraitsYaml(nextData);
-  const finalValidated = parseAndValidateCommitteePortraitsYaml(nextYamlText);
-  if (!finalValidated.data) {
-    return {
-      status: "error",
-      message: "The requested change produced invalid committee portrait list content.",
-    };
-  }
-
-  try {
-    const result = await createYamlUpdatePullRequest({
-      path: "committee/portraits.yaml",
-      content: stringifyCommitteePortraitsYaml(finalValidated.data),
-      branchPrefix: "committee-portraits-yaml",
-      prTitle: "Committee portraits: update manifest",
-      commitMessage: `Update committee/portraits.yaml (${path})`,
-      summary: `Added portrait ${path}`,
-      autoMerge: formData.get("autoMerge") === "on",
-    });
-
-    return {
-      status: "success",
-      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
+      message: returnToWorkflowUrl
+        ? `Saved draft #${result.prNumber}: ${result.prUrl}. Returning to your workflow.`
+        : `Saved draft #${result.prNumber}: ${result.prUrl}`,
+      redirectToWorkflowUrl: returnToWorkflowUrl,
     };
   } catch (error) {
     if (isGitHubAccessError(error)) {
@@ -857,14 +1155,237 @@ const perImageMetadataSchema = z.object({
     error: "Select a valid licence for this image.",
   }),
   copyrightConfirmed: z.boolean(),
+  individualsDepicted: z.boolean().default(false),
   individualsConsent: z.boolean(),
 });
+
+const perDocumentMetadataSchema = z.object({
+  title: z.string().trim().min(1, "Title is required for each document."),
+  description: z.string().trim().max(1000).optional(),
+  tags: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
+});
+
+export async function submitDocumentsDraft(
+  _previousState: DocumentsSubmitState,
+  formData: FormData
+): Promise<DocumentsSubmitState> {
+  await requireEditorAccess();
+  const returnToWorkflowUrl = toSafeReturnPath(formData.get("returnToWorkflowUrl"));
+
+  const selectedAssetFiles = formData
+    .getAll("assetFiles")
+    .filter((value): value is File => value instanceof File && value.size > 0);
+  const selectedDocumentFiles = formData
+    .getAll("documentFiles")
+    .filter((value): value is File => value instanceof File && value.size > 0);
+  const assetFiles =
+    selectedAssetFiles.length > 0 ? selectedAssetFiles : selectedDocumentFiles;
+
+  if (assetFiles.length === 0) {
+    return {
+      status: "error",
+      message: "Select at least one file before submitting.",
+      fieldErrors: {
+        assetFiles: ["Select one or more files before submitting."],
+      },
+    };
+  }
+
+  if (assetFiles.length > MAX_UPLOAD_FILES) {
+    return {
+      status: "error",
+      message: `Upload up to ${MAX_UPLOAD_FILES} files per submission.`,
+      fieldErrors: {
+        assetFiles: [`Too many files selected (${assetFiles.length}).`],
+      },
+    };
+  }
+
+  const safeFilenames = new Set<string>();
+  const fileErrors: string[] = [];
+  const safeNames = assetFiles.map((file) => {
+    const safeName = toSafeUploadFilename(file.name, "any");
+    if (!safeName) {
+      fileErrors.push(
+        `${file.name}: filename must include a valid extension and use safe characters.`
+      );
+      return null;
+    }
+
+    if (safeFilenames.has(safeName)) {
+      fileErrors.push(`${file.name}: collides with another selected filename (${safeName}).`);
+      return null;
+    }
+
+    safeFilenames.add(safeName);
+    return safeName;
+  });
+  if (fileErrors.length > 0) {
+    return {
+      status: "error",
+      message: "Fix the upload issues and try again.",
+      fieldErrors: {
+        assetFiles: fileErrors,
+      },
+    };
+  }
+
+  let parsedMetadataArray: unknown;
+  try {
+    parsedMetadataArray = JSON.parse(String(formData.get("documentsMetadata") ?? ""));
+  } catch {
+    return {
+      status: "error",
+      message: "Document metadata is invalid.",
+      fieldErrors: { documentsMetadata: ["Document metadata is invalid."] },
+    };
+  }
+
+  const metadataResult = z.array(perDocumentMetadataSchema).safeParse(parsedMetadataArray);
+  if (!metadataResult.success) {
+    const issues = metadataResult.error.issues.map((issue) => issue.message);
+    return {
+      status: "error",
+      message: "Please fix the highlighted fields before continuing.",
+      fieldErrors: { documentsMetadata: issues },
+    };
+  }
+
+  const metadataArray = metadataResult.data;
+  if (metadataArray.length !== assetFiles.length) {
+    return {
+      status: "error",
+      message: "Document metadata count does not match file count.",
+      fieldErrors: {
+        documentsMetadata: ["Document metadata count does not match file count."],
+      },
+    };
+  }
+
+  const yamlText = await getDocumentsManifestDraft();
+  if (!yamlText) {
+    return {
+      status: "error",
+      message: "Could not load the document list from the content store.",
+    };
+  }
+
+  const validated = parseAndValidateDocumentsManifestYaml(yamlText);
+  if (!validated.data) {
+    return {
+      status: "error",
+      message: validated.error ?? "The document list is not valid.",
+    };
+  }
+
+  const existingPaths = new Set(validated.data.documents.map((item) => item.path));
+  const duplicateExistingPaths = safeNames
+    .map((safeName) => (safeName ? `blobs/documents/${safeName}` : null))
+    .filter((path): path is string => Boolean(path) && existingPaths.has(path as string));
+  if (duplicateExistingPaths.length > 0) {
+    return {
+      status: "error",
+      message: "Some selected files already exist in the document list.",
+      fieldErrors: {
+        assetFiles: duplicateExistingPaths.map((path) => `${path}: already exists in document list.`),
+      },
+    };
+  }
+
+  try {
+    const files = await Promise.all(
+      assetFiles.map(async (file, index) => {
+        const safeName = safeNames[index] as string;
+        const bytes = Buffer.from(await file.arrayBuffer());
+        return {
+          path: `blobs/documents/${safeName}`,
+          content: bytes.toString("base64"),
+          encoding: "base64" as const,
+          metadata: metadataArray[index],
+        };
+      })
+    );
+
+    const nextData = structuredClone(validated.data);
+    for (const file of files) {
+      nextData.documents.push({
+        path: file.path,
+        tier: "document",
+        tags: file.metadata.tags,
+        title: file.metadata.title,
+        description: file.metadata.description || undefined,
+      });
+    }
+
+    const nextYamlText = stringifyDocumentsManifestYaml(nextData);
+    const finalValidated = parseAndValidateDocumentsManifestYaml(nextYamlText);
+    if (!finalValidated.data) {
+      return {
+        status: "error",
+        message: "The requested change produced invalid document list content.",
+      };
+    }
+
+    const editorSession = await getEditorSession();
+    const author = buildPrAuthor(editorSession);
+    const autoMerge = formData.get("autoMerge") === "on";
+    const branchName = `shr-admin/documents-${Date.now()}`;
+    const result = await createContentPullRequestWithFiles({
+      title: `Documents: upload ${files.length}`,
+      files: [
+        ...files.map((file) => ({
+          path: file.path,
+          content: file.content,
+          encoding: file.encoding,
+        })),
+        {
+          path: "documents/manifest.yaml",
+          content: Buffer.from(stringifyDocumentsManifestYaml(finalValidated.data)).toString("base64"),
+          encoding: "base64" as const,
+        },
+      ],
+      commitMessage: `Upload documents (${files.length})`,
+      prTitle: `Documents: upload ${files.length}`,
+      prBody:
+        `Document upload created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
+        `- Content repo: ${contentConfig.repo}\n` +
+        `- Files uploaded: ${files.length}\n` +
+        `- Updated file: documents/manifest.yaml`,
+      branchName,
+      author,
+      labels: autoMerge ? ["auto-merge"] : undefined,
+    });
+
+    return {
+      status: "success",
+      message: returnToWorkflowUrl
+        ? `Saved draft #${result.prNumber}: ${result.prUrl}. Returning to your workflow.`
+        : `Saved draft #${result.prNumber}: ${result.prUrl}`,
+      prUrl: result.prUrl,
+      prNumber: result.prNumber,
+      redirectToWorkflowUrl: returnToWorkflowUrl,
+    };
+  } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Failed to save this draft.",
+    };
+  }
+}
 
 export async function submitRaceImagesDraft(
   _previousState: RaceImagesSubmitState,
   formData: FormData
 ): Promise<RaceImagesSubmitState> {
   await requireEditorAccess();
+  const returnToWorkflowUrl = toSafeReturnPath(formData.get("returnToWorkflowUrl"));
 
   const raceId = String(formData.get("raceId") ?? "").trim();
   if (!raceId) {
@@ -958,6 +1479,21 @@ export async function submitRaceImagesDraft(
     };
   }
 
+  const missingConsent = metadataArray
+    .map((m, i) => (m.individualsDepicted && !m.individualsConsent ? i + 1 : null))
+    .filter((i): i is number => i !== null);
+  if (missingConsent.length > 0) {
+    return {
+      status: "error",
+      message: "Consent is required when identifiable individuals appear in an image.",
+      fieldErrors: {
+        imagesMetadata: [
+          `Consent must be confirmed for image${missingConsent.length === 1 ? "" : "s"} ${missingConsent.join(", ")}.`,
+        ],
+      },
+    };
+  }
+
   const heroIndexRaw = String(formData.get("heroIndex") ?? "");
   const heroIndex = heroIndexRaw !== "" ? parseInt(heroIndexRaw, 10) : null;
 
@@ -1041,7 +1577,7 @@ export async function submitRaceImagesDraft(
     const consentRows = processedImages
       .map((img, i) => {
         const m = img.metadata;
-        const individuals = m.individualsConsent
+        const individuals = m.individualsDepicted && m.individualsConsent
           ? "Depicts individuals — consent confirmed"
           : "No identifiable individuals / not applicable";
         return `| ${i + 1} | ${img.file.name} | ${m.license} | ✓ | ${individuals} |`;
@@ -1082,9 +1618,12 @@ export async function submitRaceImagesDraft(
 
     return {
       status: "success",
-      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
+      message: returnToWorkflowUrl
+        ? `Saved draft #${result.prNumber}: ${result.prUrl}. Returning to your workflow.`
+        : `Saved draft #${result.prNumber}: ${result.prUrl}`,
       prUrl: result.prUrl,
       prNumber: result.prNumber,
+      redirectToWorkflowUrl: returnToWorkflowUrl,
     };
   } catch (error) {
     if (isGitHubAccessError(error)) {

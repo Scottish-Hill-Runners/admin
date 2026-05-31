@@ -21,6 +21,7 @@ export type NewsActionState = {
   status: "idle" | "success" | "error";
   message?: string;
   fieldErrors?: Partial<Record<keyof NewsFormValues, string[]>>;
+  redirectToWorkflowUrl?: string;
 };
 
 export type NewsSuffixSuggestionState = {
@@ -55,10 +56,24 @@ function buildNewsMarkdown(values: NewsFormValues): string {
   });
 }
 
+function toSafeReturnPath(value: FormDataEntryValue | null): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
 export async function saveNewsDraft(
   _previousState: NewsActionState,
   formData: FormData
 ): Promise<NewsActionState> {
+  const returnToWorkflowUrl = toSafeReturnPath(formData.get("returnToWorkflowUrl"));
   const parsed = newsFormSchema.safeParse({
     title: formData.get("title"),
     date: formData.get("date"),
@@ -131,6 +146,7 @@ export async function saveNewsDraft(
       message: didAutoAssignSuffix
         ? `Saved draft #${result.prNumber}: ${result.prUrl} (ending auto-set to ${effectiveSuffix})`
         : `Saved draft #${result.prNumber}: ${result.prUrl}`,
+      redirectToWorkflowUrl: returnToWorkflowUrl,
     };
   } catch (error) {
     if (isGitHubAccessError(error)) {

@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 
 type NewYearInputProps = {
   raceId: string;
+  returnToWorkflowUrl?: string;
 };
 
-export function NewYearInput({ raceId }: NewYearInputProps) {
+export function NewYearInput({ raceId, returnToWorkflowUrl }: NewYearInputProps) {
   const router = useRouter();
   const [year, setYear] = useState("");
 
@@ -17,7 +18,11 @@ export function NewYearInput({ raceId }: NewYearInputProps) {
     if (!trimmed) {
       return;
     }
-    router.push(`/results/${encodeURIComponent(raceId)}/${encodeURIComponent(trimmed)}`);
+    const baseUrl = `/results/${encodeURIComponent(raceId)}/${encodeURIComponent(trimmed)}`;
+    const withReturn = returnToWorkflowUrl
+      ? `${baseUrl}?returnToWorkflow=${encodeURIComponent(returnToWorkflowUrl)}`
+      : baseUrl;
+    router.push(withReturn);
   }
 
   return (

@@ -10,7 +10,6 @@ import {
 import { validateRaceResultsCsv } from "@/lib/results-csv";
 
 const LIVE_VALIDATION_DEBOUNCE_MS = 250;
-const PREVIEW_ROW_LIMIT = 300;
 
 const initialState: ResultsUploadState = {
   status: "idle",
@@ -28,6 +27,7 @@ type ResultsUploadFormProps = {
   fixedYear?: string;
   raceItems?: Array<{ raceId: string }>;
   knownClubNames?: string[];
+  returnToWorkflowUrl?: string;
 };
 
 function normalizeLineEndings(value: string): string {
@@ -57,22 +57,17 @@ function buildEffectiveYear(year: string, suffix: string, shortenedRoute: boolea
   return shortenedRoute ? `${withSuffix}*` : withSuffix;
 }
 
-function parsePreview(csvText: string) {
+function countDataRows(csvText: string): number {
   const lines = csvText
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
     .filter((line) => line.length > 0);
 
-  if (lines.length === 0) {
-    return { headers: [] as string[], rows: [] as string[][] };
+  if (lines.length <= 1) {
+    return 0;
   }
 
-  const splitLine = (line: string) => line.split(",").map((value) => value.trim());
-
-  return {
-    headers: splitLine(lines[0]),
-    rows: lines.slice(1).map(splitLine),
-  };
+  return lines.length - 1;
 }
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -91,7 +86,7 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debouncedValue;
 }
 
-export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceItems = [], knownClubNames }: ResultsUploadFormProps) {
+export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceItems = [], knownClubNames, returnToWorkflowUrl }: ResultsUploadFormProps) {
   const router = useRouter();
   const [state, formAction, isPending] = useActionState(saveResultsDraft, initialState);
   const buttonLabel = isPending ? "Checking..." : "Save results draft";
@@ -105,10 +100,9 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
   const [csvTextValue, setCsvTextValue] = useState(
     normalizeLineEndings(initialValues?.csvText ?? "")
   );
-  const [prepareNewsTemplate, setPrepareNewsTemplate] = useState(true);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const debouncedCsvTextValue = useDebouncedValue(csvTextValue, LIVE_VALIDATION_DEBOUNCE_MS);
-  const preview = useMemo(() => parsePreview(debouncedCsvTextValue), [debouncedCsvTextValue]);
+  const dataRowCount = useMemo(() => countDataRows(debouncedCsvTextValue), [debouncedCsvTextValue]);
   const clubNameSet = useMemo(
     () => (knownClubNames ? new Set(knownClubNames) : undefined),
     [knownClubNames]
@@ -119,69 +113,19 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
   );
   const liveErrors = liveIssues.filter((issue) => issue.level === "error");
   const liveWarnings = liveIssues.filter((issue) => issue.level === "warning");
-  const liveNotes = liveIssues.filter((issue) => issue.level === "note");
   const blockingErrorsExist = liveErrors.length > 0;
-  const previewRows = useMemo(
-    () => preview.rows.slice(0, PREVIEW_ROW_LIMIT),
-    [preview.rows]
-  );
-  const errorRows = useMemo(() => {
-    const rows = new Set<number>();
-
-    for (const issue of liveErrors) {
-      if (issue.row) {
-        rows.add(issue.row);
-      }
-    }
-
-    return rows;
-  }, [liveErrors]);
-  const warningRows = useMemo(() => {
-    const rows = new Set<number>();
-
-    for (const issue of liveWarnings) {
-      if (issue.row) {
-        rows.add(issue.row);
-      }
-    }
-
-    return rows;
-  }, [liveWarnings]);
-  const noteRows = useMemo(() => {
-    const rows = new Set<number>();
-    for (const issue of liveNotes)
-      if (issue.row)
-        rows.add(issue.row);
-    return rows;
-  }, [liveNotes]);
-  const rowMessages = useMemo(() => {
-    const map = new Map<number, string[]>();
-
-    for (const issue of liveIssues) {
-      if (issue.row) {
-        const existing = map.get(issue.row);
-        if (existing) {
-          existing.push(issue.message);
-        } else {
-          map.set(issue.row, [issue.message]);
-        }
-      }
-    }
-
-    return map;
-  }, [liveIssues]);
   const effectiveYearValue = useMemo(
     () => buildEffectiveYear(yearValue, yearSuffix, shortenedRoute),
     [yearValue, yearSuffix, shortenedRoute]
   );
 
   useEffect(() => {
-    if (state.status !== "success" || !state.redirectToNewsUrl) {
+    if (state.status !== "success" || !state.redirectToWorkflowUrl) {
       return;
     }
 
-    router.push(state.redirectToNewsUrl);
-  }, [router, state.redirectToNewsUrl, state.status]);
+    router.push(state.redirectToWorkflowUrl);
+  }, [router, state.redirectToWorkflowUrl, state.status]);
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -222,6 +166,9 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
       }}
     >
       <input type="hidden" name="csvText" value={csvTextValue} />
+      {returnToWorkflowUrl ? (
+        <input type="hidden" name="returnToWorkflowUrl" value={returnToWorkflowUrl} />
+      ) : null}
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <div className="grid gap-5">
           {fixedRaceId ? (
@@ -328,25 +275,13 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
             <p className="text-sm leading-6 text-stone-600">
               {selectedFileName
                 ? `Loaded file: ${selectedFileName}`
-                : "Upload a CSV file to populate the preview and checks."}
+                : "Upload a CSV file to run checks."}
             </p>
           </label>
           <p className="text-sm leading-6 text-stone-600">
             The uploaded CSV is saved as `races/&lt;raceId&gt;/&lt;year&gt;.csv`.
-            Use the preview and checks to confirm content before submitting a draft.
+            Review the checks and row summary before submitting a draft.
           </p>
-          <label className="flex items-start gap-3 rounded-xl border border-stone-900/10 bg-stone-50 px-4 py-3">
-            <input
-              type="checkbox"
-              name="prepareNewsTemplate"
-              checked={prepareNewsTemplate}
-              onChange={(event) => setPrepareNewsTemplate(event.target.checked)}
-              className="mt-1 size-4 rounded border-stone-400 text-stone-900 focus:ring-stone-500"
-            />
-            <span className="text-sm leading-6 text-stone-700">
-              After saving results, open a prefilled news draft template with winners (manual review and submit).
-            </span>
-          </label>
           {state.fieldErrors?.csvText?.map((error) => (
             <p key={error} className="text-sm text-red-700">
               {error}
@@ -371,28 +306,13 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
           </p>
         </div>
         <div className="mt-6 space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-                Check status
-              </p>
-              <p className="mt-2 text-sm leading-6 text-stone-200">
-                {state.message ?? "Nothing submitted yet."}
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-3">
-              <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
-                <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
-                Minor correction — skip review
-              </label>
-              <button
-                type="submit"
-                disabled={isPending || blockingErrorsExist}
-                className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500"
-              >
-                {buttonLabel}
-              </button>
-            </div>
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
+              Check status
+            </p>
+            <p className="mt-2 text-sm leading-6 text-stone-200">
+              {state.message ?? "Nothing submitted yet."}
+            </p>
           </div>
           {blockingErrorsExist ? (
             <p className="text-sm leading-6 text-red-200">
@@ -406,7 +326,7 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
                 CSV issues
               </p>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-stone-200">
-                {state.issues.slice(0, 12).map((issue) => (
+                {state.issues.map((issue) => (
                   <li key={issue}>{issue}</li>
                 ))}
               </ul>
@@ -415,92 +335,57 @@ export function ResultsUploadForm({ initialValues, fixedRaceId, fixedYear, raceI
 
           <div className="rounded-2xl border border-white/10 bg-black/15 p-4">
             <p className="text-sm font-semibold uppercase tracking-[0.16em] text-lime-200/80">
-              CSV preview
+              CSV checks
             </p>
-            {preview.headers.length > 0 ? (
-              <div className="mt-3 overflow-x-auto">
-                <div className="mb-3 flex flex-wrap gap-3 text-sm">
-                  <span className="rounded-full bg-red-950/60 px-3 py-1 text-red-200">
-                    Errors: {liveErrors.length}
-                  </span>
-                  <span className="rounded-full bg-amber-950/60 px-3 py-1 text-amber-200">
-                    Warnings: {liveWarnings.length}
-                  </span>
-                </div>
-                {liveErrors.length > 0 && errorRows.size === 0 ? (
-                  <p className="mb-3 text-sm leading-6 text-red-200">
-                    Current errors are not tied to individual rows (for example, header-level issues), so no rows are highlighted.
-                  </p>
-                ) : null}
-                {liveWarnings.length > 0 && warningRows.size === 0 ? (
-                  <p className="mb-3 text-sm leading-6 text-amber-200">
-                    Current warnings are not tied to individual rows (for example, header-level issues), so no rows are highlighted.
-                  </p>
-                ) : null}
-                <div className="max-h-[32rem] overflow-y-auto rounded-xl border border-white/10">
-                  <table className="min-w-full border-collapse text-left text-sm text-stone-200">
-                    <thead className="sticky top-0 bg-[#1f2b20]">
-                      <tr>
-                        {preview.headers.map((header) => (
-                          <th key={header} className="border-b border-white/10 px-2 py-2 font-semibold text-lime-100">
-                            {header}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previewRows.map((row, rowIndex) => {
-                        const rowNumber = rowIndex + 2;
-                        const hasError = errorRows.has(rowNumber);
-                        const hasWarning = !hasError && warningRows.has(rowNumber);
-                        const hasNote = !hasError && !hasWarning && noteRows.has(rowNumber);
-                        const tooltip = rowMessages.get(rowNumber)?.join("\n");
-
-                        return (
-                          <tr
-                            key={`${rowIndex}-${row.join("|")}`}
-                            title={tooltip}
-                            style={
-                              hasError
-                                ? { backgroundColor: "rgba(185, 28, 28, 0.45)", cursor: "help" }
-                                : hasWarning
-                                  ? { backgroundColor: "rgba(180, 120, 0, 0.40)", cursor: "help" }
-                                  : hasNote
-                                    ? { backgroundColor: "rgba(0, 128, 128, 0.25)", cursor: "help" }
-                                    : undefined
-                            }
-                          >
-                            {preview.headers.map((header, columnIndex) => (
-                              <td
-                                key={`${header}-${columnIndex}`}
-                                className={`border-b px-2 py-2 align-top ${
-                                  hasError
-                                    ? "border-red-300/25 text-red-50"
-                                    : hasWarning
-                                      ? "border-amber-300/25 text-amber-50"
-                                      : "border-white/5"
-                                }`}
-                              >
-                                {row[columnIndex] ?? ""}
-                              </td>
-                            ))}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="mt-3 text-sm leading-6 text-stone-400">
-                  {preview.rows.length > PREVIEW_ROW_LIMIT
-                    ? `Showing first ${PREVIEW_ROW_LIMIT} of ${preview.rows.length} data rows.`
-                    : `Showing all ${preview.rows.length} data rows.`}
-                </p>
-              </div>
-            ) : (
-              <p className="mt-3 text-sm leading-6 text-stone-400">
-                Upload CSV content to preview headers and rows here.
+            <div className="mt-3 space-y-4 text-sm">
+              <p className="text-stone-300">
+                Data rows found: <span className="font-semibold text-white">{dataRowCount}</span>
               </p>
-            )}
+
+              <div>
+                <p className="font-semibold text-red-200">Errors ({liveErrors.length})</p>
+                {liveErrors.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-red-100">
+                    {liveErrors.map((issue, index) => (
+                      <li key={`error-${index}`}>
+                        {issue.row ? `Row ${issue.row}: ${issue.message}` : issue.message}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-stone-300">No errors found.</p>
+                )}
+              </div>
+
+              <div>
+                <p className="font-semibold text-amber-200">Warnings ({liveWarnings.length})</p>
+                {liveWarnings.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-amber-100">
+                    {liveWarnings.map((issue, index) => (
+                      <li key={`warning-${index}`}>
+                        {issue.row ? `Row ${issue.row}: ${issue.message}` : issue.message}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-stone-300">No warnings found.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-4 pt-2">
+            <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-stone-300">
+              <input type="checkbox" name="autoMerge" className="h-4 w-4 accent-lime-400" />
+              Minor correction — skip review
+            </label>
+            <button
+              type="submit"
+              disabled={isPending || blockingErrorsExist}
+              className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500"
+            >
+              {buttonLabel}
+            </button>
           </div>
         </div>
       </section>

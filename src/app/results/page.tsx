@@ -5,8 +5,27 @@ import { getCalendarDraft, listRaceDrafts, listRaceResultsDrafts } from "@/lib/g
 import { parseCalendarCsvRows } from "@/lib/calendar-csv";
 import { requireEditorAccess } from "@/lib/route-protection";
 
-export default async function ResultsPage() {
+type ResultsPageProps = {
+  searchParams?: Promise<{ returnToWorkflow?: string; mode?: string }>;
+};
+
+function toSafeReturnPath(value: string | undefined): string | undefined {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+export default async function ResultsPage({ searchParams }: ResultsPageProps) {
   await requireEditorAccess({ callbackUrl: "/results" });
+  const params = await searchParams;
+  const mode = params?.mode === "recent" ? "recent" : params?.mode === "historic" ? "historic" : "all";
+  const returnToWorkflow = toSafeReturnPath(params?.returnToWorkflow);
+  const returnSuffix = returnToWorkflow
+    ? `?returnToWorkflow=${encodeURIComponent(returnToWorkflow)}`
+    : "";
 
   const today = new Date().toISOString().slice(0, 10);
   const currentYear = today.slice(0, 4);
@@ -41,14 +60,22 @@ export default async function ResultsPage() {
   const missingResultsRaceIds = resultsChecks
     .filter(({ hasCurrentYear }) => !hasCurrentYear)
     .map(({ raceId }) => raceId);
+  const showMissingResultsSection = mode === "recent" || mode === "all";
+  const showAllRacesSection = mode === "historic" || mode === "all";
 
   return (
     <EditorialShell
       eyebrow="Results"
       title="Race results"
-      description="Choose a race to view, edit, or add results files."
+      description={
+        mode === "recent"
+          ? "Choose from races this year that still need a results file."
+          : mode === "historic"
+            ? "Choose a race, then choose the year to update historic results."
+            : "Choose a race to view, edit, or add results files."
+      }
     >
-      {missingResultsRaceIds.length > 0 && (
+      {showMissingResultsSection ? (
         <section className="rounded-[1.5rem] border border-amber-400/40 bg-amber-50/80 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
           <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900">
             Missing results — {currentYear}
@@ -56,44 +83,51 @@ export default async function ResultsPage() {
           <p className="mt-3 text-sm leading-6 text-stone-600">
             These races have already taken place this year but have no results file yet.
           </p>
-          <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {missingResultsRaceIds.map((raceId) => (
-              <li key={raceId}>
-                {knownRaceIds.has(raceId) ? (
-                  <Link
-                    href={`/results/${encodeURIComponent(raceId)}/${currentYear}`}
-                    className="block rounded-2xl border border-amber-400/50 bg-white px-5 py-4 text-sm font-semibold text-stone-900 transition hover:border-amber-500 hover:bg-amber-50"
-                  >
-                    {raceId}
-                  </Link>
-                ) : (
-                  <span
-                    className="block rounded-2xl border border-amber-400/30 bg-white/50 px-5 py-4 text-sm font-semibold text-stone-400 cursor-not-allowed"
-                    title="No race file found — add a race first"
-                  >
-                    {raceId}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
+          {missingResultsRaceIds.length > 0 ? (
+            <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {missingResultsRaceIds.map((raceId) => (
+                <li key={raceId}>
+                  {knownRaceIds.has(raceId) ? (
+                    <Link
+                      href={`/results/${encodeURIComponent(raceId)}/${currentYear}${returnSuffix}`}
+                      className="block rounded-2xl border border-amber-400/50 bg-white px-5 py-4 text-sm font-semibold text-stone-900 transition hover:border-amber-500 hover:bg-amber-50"
+                    >
+                      {raceId}
+                    </Link>
+                  ) : (
+                    <span
+                      className="block rounded-2xl border border-amber-400/30 bg-white/50 px-5 py-4 text-sm font-semibold text-stone-400 cursor-not-allowed"
+                      title="No race file found — add a race first"
+                    >
+                      {raceId}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-5 text-sm text-stone-600">No missing results found for {currentYear}.</p>
+          )}
         </section>
-      )}
+      ) : null}
 
-      <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
-        <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900">
-          All races
-        </h2>
-        <p className="mt-3 text-sm leading-6 text-stone-600">
-          Select a race to manage its results files.
-        </p>
-        <div className="mt-5">
-          <RaceSearchList
-            raceItems={raceItems}
-            hrefPrefix="/results"
-          />
-        </div>
-      </section>
+      {showAllRacesSection ? (
+        <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
+          <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900">
+            All races
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-stone-600">
+            Select a race to manage its results files.
+          </p>
+          <div className="mt-5">
+            <RaceSearchList
+              raceItems={raceItems}
+              hrefPrefix="/results"
+              hrefSuffix={returnSuffix}
+            />
+          </div>
+        </section>
+      ) : null}
     </EditorialShell>
   );
 }

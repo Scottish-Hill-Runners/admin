@@ -12,7 +12,21 @@ export type LongDistanceActionState = {
   status: "idle" | "success" | "error";
   message?: string;
   fieldErrors?: Partial<Record<keyof LongDistanceFormValues, string[]>>;
+  redirectToWorkflowUrl?: string;
 };
+
+function toSafeReturnPath(value: FormDataEntryValue | null): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
 
 function buildLongDistanceMarkdown(values: LongDistanceFormValues): string {
   return matter.stringify(values.content.trim(), { title: values.title });
@@ -22,6 +36,7 @@ export async function saveLongDistanceDraft(
   _previousState: LongDistanceActionState,
   formData: FormData
 ): Promise<LongDistanceActionState> {
+  const returnToWorkflowUrl = toSafeReturnPath(formData.get("returnToWorkflowUrl"));
   const editorSession = await requireEditorAccess();
   const author = buildPrAuthor(editorSession);
 
@@ -63,6 +78,7 @@ export async function saveLongDistanceDraft(
     return {
       status: "success",
       message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
+      redirectToWorkflowUrl: returnToWorkflowUrl,
     };
   } catch (error) {
     if (isGitHubAccessError(error)) {

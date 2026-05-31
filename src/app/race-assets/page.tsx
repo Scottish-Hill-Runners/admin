@@ -3,8 +3,26 @@ import { RaceSearchList } from "@/components/race-search-list";
 import { requireEditorAccess } from "@/lib/route-protection";
 import { listRaceDrafts } from "@/lib/github";
 
-export default async function RaceAssetsPage() {
+type RaceAssetsPageProps = {
+  searchParams?: Promise<{ returnToWorkflow?: string }>;
+};
+
+function toSafeReturnPath(value: string | undefined): string | undefined {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+export default async function RaceAssetsPage({ searchParams }: RaceAssetsPageProps) {
   await requireEditorAccess({ callbackUrl: "/race-assets" });
+  const params = await searchParams;
+  const returnToWorkflow = toSafeReturnPath(params?.returnToWorkflow);
+  const returnSuffix = returnToWorkflow
+    ? `?returnToWorkflow=${encodeURIComponent(returnToWorkflow)}`
+    : "";
   const raceItems = await listRaceDrafts();
 
   return (
@@ -21,6 +39,7 @@ export default async function RaceAssetsPage() {
           <RaceSearchList
             raceItems={raceItems}
             hrefPrefix="/race-assets"
+            hrefSuffix={returnSuffix}
           />
         </div>
       </section>

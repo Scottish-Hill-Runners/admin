@@ -167,6 +167,27 @@ function normalizeRepoPath(path: string): string {
     .replace(/^(?:contents\/+)+/, "");
 }
 
+export function toSafeGitRef(value: string | undefined | null): string | undefined {
+  const decoded = decodeURIComponent(String(value ?? "").trim());
+
+  if (!decoded) {
+    return undefined;
+  }
+
+  if (
+    decoded.startsWith("/") ||
+    decoded.endsWith("/") ||
+    decoded.includes("\\") ||
+    decoded.includes("..") ||
+    decoded.includes("@{") ||
+    /[\s~^:?*\[]/.test(decoded)
+  ) {
+    return undefined;
+  }
+
+  return decoded;
+}
+
 function toSafeRepoPathSegment(value: string): string | null {
   const decoded = decodeURIComponent(String(value ?? "").trim());
 
@@ -548,7 +569,7 @@ async function getExistingFileSha(
 
 async function getRepositoryFile(path: string): Promise<string>;
 async function getRepositoryFile(path: string, options: { nullOn404: true }): Promise<string | null>;
-async function getRepositoryFile(path: string, options?: { nullOn404?: boolean }): Promise<string | null> {
+async function getRepositoryFile(path: string, options?: { nullOn404?: boolean; ref?: string }): Promise<string | null> {
   const client = getGitHubClient();
   if (!client) {
     throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
@@ -566,7 +587,7 @@ async function getRepositoryFile(path: string, options?: { nullOn404?: boolean }
         owner: repo.owner,
         repo: repo.repo,
         path: normalizedPath,
-        ref: contentConfig.branch,
+        ref: options?.ref ?? contentConfig.branch,
       }
     );
   } catch (error) {
@@ -587,6 +608,16 @@ async function getRepositoryFile(path: string, options?: { nullOn404?: boolean }
 
 export async function getContentFile(path: string): Promise<string> {
   return getRepositoryFile(path);
+}
+
+export async function getContentFileAtRef(path: string, ref: string): Promise<string>;
+export async function getContentFileAtRef(path: string, ref: string, options: { nullOn404: true }): Promise<string | null>;
+export async function getContentFileAtRef(
+  path: string,
+  ref: string,
+  options?: { nullOn404?: boolean }
+): Promise<string | null> {
+  return getRepositoryFile(path, { nullOn404: options?.nullOn404, ref });
 }
 
 async function getRepositoryDirectory(path: string): Promise<RepositoryDirectoryEntry[]>;
@@ -870,7 +901,7 @@ export async function listRaceDrafts(): Promise<RaceListItem[]> {
   }
 }
 
-export async function getNewsDraft(slug: string): Promise<
+export async function getNewsDraft(slug: string, options?: { ref?: string }): Promise<
   | {
       slug: string;
       data: NewsFrontmatter;
@@ -878,7 +909,7 @@ export async function getNewsDraft(slug: string): Promise<
     }
   | null
 > {
-  const file = await getRepositoryFile(`news/${slug}.md`, { nullOn404: true });
+  const file = await getRepositoryFile(`news/${slug}.md`, { nullOn404: true, ref: options?.ref });
   if (file === null) {
     return null;
   }
@@ -897,13 +928,16 @@ export async function getNewsDraft(slug: string): Promise<
   };
 }
 
-export async function getRaceDraft(raceId: string): Promise<RaceInfoFormData | null> {
+export async function getRaceDraft(raceId: string, options?: { ref?: string }): Promise<RaceInfoFormData | null> {
   const safeRaceId = toSafeRepoPathSegment(raceId);
   if (!safeRaceId) {
     return null;
   }
 
-  const file = await getRepositoryFile(`races/${safeRaceId}/index.md`, { nullOn404: true });
+  const file = await getRepositoryFile(`races/${safeRaceId}/index.md`, {
+    nullOn404: true,
+    ref: options?.ref,
+  });
   if (file === null) {
     return null;
   }
@@ -927,7 +961,8 @@ export async function getRaceDraft(raceId: string): Promise<RaceInfoFormData | n
 
 export async function getRaceResultsDraft(
   raceId: string,
-  year: string
+  year: string,
+  options?: { ref?: string }
 ): Promise<
   | {
       raceId: string;
@@ -942,7 +977,10 @@ export async function getRaceResultsDraft(
     return null;
   }
 
-  const file = await getRepositoryFile(`races/${safeRaceId}/${safeYear}.csv`, { nullOn404: true });
+  const file = await getRepositoryFile(`races/${safeRaceId}/${safeYear}.csv`, {
+    nullOn404: true,
+    ref: options?.ref,
+  });
   if (file === null) {
     return null;
   }
@@ -955,14 +993,18 @@ export async function getRaceResultsDraft(
   };
 }
 
-export async function getCalendarDraft(): Promise<
+export async function getCalendarDraft(options?: { ref?: string }): Promise<
   | {
       csvText: string;
     }
   | null
 > {
   try {
-    const file = await getRepositoryFile("calendar.csv");
+    const file = await getRepositoryFile("calendar.csv", { nullOn404: true, ref: options?.ref });
+    if (file === null) {
+      return null;
+    }
+
     const normalizedFile = file.replace(/\r\n?/g, "\n");
 
     return {
@@ -973,25 +1015,25 @@ export async function getCalendarDraft(): Promise<
   }
 }
 
-export async function getHomepageImagesDraft(): Promise<string | null> {
+export async function getHomepageImagesDraft(options?: { ref?: string }): Promise<string | null> {
   try {
-    return await getRepositoryFile("homepage/images.yaml", { nullOn404: true });
+    return await getRepositoryFile("homepage/images.yaml", { nullOn404: true, ref: options?.ref });
   } catch {
     return null;
   }
 }
 
-export async function getDocumentsManifestDraft(): Promise<string | null> {
+export async function getDocumentsManifestDraft(options?: { ref?: string }): Promise<string | null> {
   try {
-    return await getRepositoryFile("documents/manifest.yaml", { nullOn404: true });
+    return await getRepositoryFile("documents/manifest.yaml", { nullOn404: true, ref: options?.ref });
   } catch {
     return null;
   }
 }
 
-export async function getCommitteePortraitsDraft(): Promise<string | null> {
+export async function getCommitteePortraitsDraft(options?: { ref?: string }): Promise<string | null> {
   try {
-    return await getRepositoryFile("committee/portraits.yaml", { nullOn404: true });
+    return await getRepositoryFile("committee/portraits.yaml", { nullOn404: true, ref: options?.ref });
   } catch {
     return null;
   }
@@ -1655,13 +1697,16 @@ export async function listClubDrafts(): Promise<ClubListItem[]> {
   }
 }
 
-export async function getClubDraft(clubId: string): Promise<ClubInfoFormData | null> {
+export async function getClubDraft(clubId: string, options?: { ref?: string }): Promise<ClubInfoFormData | null> {
   const safeClubId = toSafeRepoPathSegment(clubId);
   if (!safeClubId) {
     return null;
   }
 
-  const file = await getRepositoryFile(`clubs/${safeClubId}.md`, { nullOn404: true });
+  const file = await getRepositoryFile(`clubs/${safeClubId}.md`, {
+    nullOn404: true,
+    ref: options?.ref,
+  });
   if (file === null) {
     return null;
   }
@@ -1755,13 +1800,16 @@ export async function listLongDistanceDrafts(): Promise<LongDistanceListItem[]> 
   }
 }
 
-export async function getLongDistanceDraft(slug: string): Promise<LongDistanceFormData | null> {
+export async function getLongDistanceDraft(slug: string, options?: { ref?: string }): Promise<LongDistanceFormData | null> {
   const safeSlug = toSafeRepoPathSegment(slug);
   if (!safeSlug) {
     return null;
   }
 
-  const file = await getRepositoryFile(`long-distance/${safeSlug}.md`, { nullOn404: true });
+  const file = await getRepositoryFile(`long-distance/${safeSlug}.md`, {
+    nullOn404: true,
+    ref: options?.ref,
+  });
   if (file === null) {
     return null;
   }
@@ -1791,14 +1839,14 @@ export async function listInfoDrafts(): Promise<InfoListItem[]> {
   }
 }
 
-export async function getInfoDraft(filePath: string): Promise<InfoFormData | null> {
+export async function getInfoDraft(filePath: string, options?: { ref?: string }): Promise<InfoFormData | null> {
   const safeFilePath = toSafeRepoRelativeFilePath(filePath);
   if (!safeFilePath) {
     return null;
   }
 
   const targetPath = `info/${safeFilePath}`;
-  const file = await getRepositoryFile(targetPath, { nullOn404: true });
+  const file = await getRepositoryFile(targetPath, { nullOn404: true, ref: options?.ref });
   if (file === null) {
     return null;
   }
@@ -1831,6 +1879,9 @@ type PullRequestListResponseItem = {
 
 type PullRequestDetailResponseItem = PullRequestListResponseItem & {
   state: "open" | "closed";
+  head: {
+    ref: string;
+  };
 };
 
 type PullRequestFileResponseItem = {
@@ -1875,6 +1926,8 @@ export type EditorSubmission = {
 export type EditorSubmissionDetail = {
   number: number;
   title: string;
+  htmlUrl: string;
+  headRef: string;
   createdAt: string;
   updatedAt: string;
   closedAt: string | null;
@@ -1885,6 +1938,15 @@ export type EditorSubmissionDetail = {
     path: string;
     changeType: PullRequestFileResponseItem["status"];
   }>;
+};
+
+export type EditorResultsSubmissionDraft = {
+  submissionNumber: number;
+  submissionUrl: string;
+  raceId: string;
+  year: string;
+  csvPath: string;
+  csvText: string;
 };
 
 export async function listEditorSubmissions(
@@ -1994,6 +2056,8 @@ export async function getEditorSubmissionDetail(
   return {
     number: pr.number,
     title: pr.title,
+    htmlUrl: pr.html_url,
+    headRef: pr.head.ref,
     createdAt: pr.created_at,
     updatedAt: pr.updated_at,
     closedAt: pr.closed_at,
@@ -2004,6 +2068,55 @@ export async function getEditorSubmissionDetail(
       path: file.filename,
       changeType: file.status,
     })),
+  };
+}
+
+const RESULTS_SUBMISSION_PATH_PATTERN = /^races\/([^/]+)\/([^/]+)\.csv$/;
+
+export async function getEditorResultsSubmissionDraft(
+  email: string,
+  submissionNumber: number
+): Promise<EditorResultsSubmissionDraft | null> {
+  const detail = await getEditorSubmissionDetail(email, submissionNumber);
+  if (!detail) {
+    return null;
+  }
+
+  const changedResultsFile = detail.changedFiles.find((file) => {
+    if (file.changeType === "removed") {
+      return false;
+    }
+
+    return RESULTS_SUBMISSION_PATH_PATTERN.test(file.path);
+  });
+
+  if (!changedResultsFile) {
+    return null;
+  }
+
+  const match = changedResultsFile.path.match(RESULTS_SUBMISSION_PATH_PATTERN);
+  if (!match) {
+    return null;
+  }
+
+  const raceId = decodeURIComponent(match[1] ?? "");
+  const year = decodeURIComponent(match[2] ?? "");
+  if (!raceId || !year || !detail.headRef) {
+    return null;
+  }
+
+  const csvText = await getContentFileAtRef(changedResultsFile.path, detail.headRef, { nullOn404: true });
+  if (csvText === null) {
+    return null;
+  }
+
+  return {
+    submissionNumber: detail.number,
+    submissionUrl: detail.htmlUrl,
+    raceId,
+    year,
+    csvPath: changedResultsFile.path,
+    csvText,
   };
 }
 
@@ -2064,6 +2177,22 @@ export async function mergePullRequest(pullNumber: number): Promise<{ sha: strin
   }
 
   return { sha: result.data.sha ?? "" };
+}
+
+export async function closePullRequest(pullNumber: number): Promise<void> {
+  const client = getGitHubClient();
+  if (!client) {
+    throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+
+  await client.pulls.update({
+    owner: repo.owner,
+    repo: repo.repo,
+    pull_number: pullNumber,
+    state: "closed",
+  });
 }
 
 export async function publishAndMergeToLive(

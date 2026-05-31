@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, useCallback, Fragment } from "react";
+import { useMemo, useState, useCallback, useRef, Fragment, useEffect } from "react";
 import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 import {
   saveResultsDraft,
   type ResultsUploadState,
@@ -11,6 +12,27 @@ import { validateRaceResultsCsv, splitCsvLine } from "@/lib/results-csv";
 const initialState: ResultsUploadState = {
   status: "idle",
 };
+
+const CLUB_HEADERS = ["Club"];
+const CATEGORY_HEADERS = ["RunnerCategory", "Category", "Cat"];
+const RUNNER_CATEGORY_PATTERN = /^(M|F|A|NB?)\d{0,2}$/;
+
+type BulkFixField = "club" | "runnerCategory";
+
+type BulkFixSuggestion = {
+  field: BulkFixField;
+  fieldLabel: string;
+  gridRowIndex: number;
+  colIndex: number;
+  originalValue: string;
+  replacementValue: string;
+};
+
+type CellEditSnapshot = {
+  gridRowIndex: number;
+  colIndex: number;
+  originalValue: string;
+} | null;
 
 function normalizeLineEndings(value: string): string {
   return value.replace(/\r\n?/g, "\n");
@@ -43,19 +65,95 @@ function serializeCsvGrid(grid: string[][]): string {
   return grid.map(serializeCsvRow).join("\n");
 }
 
+function countCellMatches(grid: string[][], colIndex: number, value: string): number {
+  const target = value.trim();
+  if (!target) {
+    return 0;
+  }
+
+  return grid.slice(1).filter((row) => (row[colIndex] ?? "").trim() === target).length;
+}
+
+function applyCellReplacement(grid: string[][], colIndex: number, fromValue: string, toValue: string): string[][] {
+  const source = fromValue.trim();
+  const replacement = toValue.trim();
+
+  if (!source || !replacement) {
+    return grid;
+  }
+
+  return grid.map((row, rowIndex) => {
+    if (rowIndex === 0) {
+      return row;
+    }
+
+    const nextRow = [...row];
+    if ((nextRow[colIndex] ?? "").trim() === source) {
+      nextRow[colIndex] = replacement;
+    }
+    return nextRow;
+  });
+}
+
+function getBulkField(header: string): BulkFixField | null {
+  const normalized = header.trim();
+  if (CLUB_HEADERS.includes(normalized)) {
+    return "club";
+  }
+  if (CATEGORY_HEADERS.includes(normalized)) {
+    return "runnerCategory";
+  }
+  return null;
+}
+
+function getFieldLabel(field: BulkFixField): string {
+  return field === "club" ? "Club" : "Runner category";
+}
+
+function isBulkFixEligible(field: BulkFixField, value: string, knownClubNames?: ReadonlySet<string>): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (field === "club") {
+    if (!knownClubNames) {
+      return false;
+    }
+
+    const lowered = trimmed.toLowerCase();
+    return lowered !== "unattached" && !knownClubNames.has(lowered);
+  }
+
+  return !RUNNER_CATEGORY_PATTERN.test(trimmed);
+}
+
 type ResultsEditFormProps = {
   raceId: string;
   year: string;
   csvText: string;
   knownClubNames?: string[];
+  returnToWorkflowUrl?: string;
 };
 
-export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: ResultsEditFormProps) {
+export function ResultsEditForm({ raceId, year, csvText, knownClubNames, returnToWorkflowUrl }: ResultsEditFormProps) {
+  const router = useRouter();
   const [state, formAction, isPending] = useActionState(saveResultsDraft, initialState);
   const buttonLabel = isPending ? "Updating..." : "Update results draft";
 
+  useEffect(() => {
+    if (state.status !== "success" || !state.redirectToWorkflowUrl) {
+      return;
+    }
+
+    router.push(state.redirectToWorkflowUrl);
+  }, [router, state.redirectToWorkflowUrl, state.status]);
+
   // grid[0] = header row, grid[1..] = data rows
   const [grid, setGrid] = useState<string[][]>(() => parseCsvGrid(csvText));
+  const [editSnapshot, setEditSnapshot] = useState<CellEditSnapshot>(null);
+  const [bulkFixSuggestion, setBulkFixSuggestion] = useState<BulkFixSuggestion | null>(null);
+  const bulkFixSuggestionRef = useRef<BulkFixSuggestion | null>(null);
 
   const headers = grid[0] ?? [];
   const dataRows = grid.slice(1);
@@ -152,9 +250,81 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
       const next = prev.map((row) => [...row]);
       if (!next[rowIndex]) next[rowIndex] = [];
       next[rowIndex][colIndex] = value;
+
       return next;
     });
   }, []);
+
+  const handleCellFocus = useCallback((rowIndex: number, colIndex: number) => {
+    if (rowIndex <= 0) {
+      setEditSnapshot(null);
+      return;
+    }
+
+    setEditSnapshot({
+      gridRowIndex: rowIndex,
+      colIndex,
+      originalValue: (grid[rowIndex]?.[colIndex] ?? "").trim(),
+    });
+  }, [grid]);
+
+  const handleCellBlur = useCallback((rowIndex: number, colIndex: number) => {
+    if (rowIndex <= 0) {
+      return;
+    }
+
+    const snapshot = editSnapshot;
+    setGrid((prev) => {
+      const header = prev[0]?.[colIndex] ?? "";
+      const field = getBulkField(header);
+      if (!field) {
+        setBulkFixSuggestion(null);
+        setEditSnapshot(null);
+        return prev;
+      }
+
+      if (!snapshot || snapshot.gridRowIndex !== rowIndex || snapshot.colIndex !== colIndex) {
+        setBulkFixSuggestion(null);
+        return prev;
+      }
+
+      const currentValue = (prev[rowIndex]?.[colIndex] ?? "").trim();
+      if (!currentValue || currentValue === snapshot.originalValue) {
+        setBulkFixSuggestion(null);
+        return prev;
+      }
+
+      if (!isBulkFixEligible(field, snapshot.originalValue, clubNameSet)) {
+        setBulkFixSuggestion(null);
+        return prev;
+      }
+
+      const matchCount = countCellMatches(prev, colIndex, snapshot.originalValue);
+      if (matchCount <= 1) {
+        setBulkFixSuggestion(null);
+        return prev;
+      }
+
+      setBulkFixSuggestion({
+        field,
+        fieldLabel: getFieldLabel(field),
+        gridRowIndex: rowIndex,
+        colIndex,
+        originalValue: snapshot.originalValue,
+        replacementValue: currentValue,
+      });
+      bulkFixSuggestionRef.current = {
+        field,
+        fieldLabel: getFieldLabel(field),
+        gridRowIndex: rowIndex,
+        colIndex,
+        originalValue: snapshot.originalValue,
+        replacementValue: currentValue,
+      };
+      setEditSnapshot(null);
+      return prev;
+    });
+  }, [clubNameSet, editSnapshot]);
 
   const deleteRow = useCallback((dataRowIndex: number) => {
     setGrid((prev) => prev.filter((_, i) => i !== dataRowIndex + 1));
@@ -164,11 +334,51 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
     setGrid((prev) => [...prev, Array<string>(colCount).fill("")]);
   }, [colCount]);
 
+  const applyBulkFix = useCallback(() => {
+    const suggestion = bulkFixSuggestionRef.current ?? bulkFixSuggestion;
+    if (!suggestion) {
+      return;
+    }
+
+    setGrid((prev) =>
+      applyCellReplacement(
+        prev,
+        suggestion.colIndex,
+        suggestion.originalValue,
+        suggestion.replacementValue
+      )
+    );
+    bulkFixSuggestionRef.current = null;
+    setBulkFixSuggestion(null);
+    setEditSnapshot(null);
+  }, [bulkFixSuggestion]);
+
+  const activeBulkSuggestion = useMemo(() => {
+    if (!bulkFixSuggestion) {
+      return null;
+    }
+
+    const currentValue = (grid[bulkFixSuggestion.gridRowIndex]?.[bulkFixSuggestion.colIndex] ?? "").trim();
+    const remainingMatches = countCellMatches(grid, bulkFixSuggestion.colIndex, bulkFixSuggestion.originalValue);
+
+    if (currentValue !== bulkFixSuggestion.replacementValue || remainingMatches <= 0) {
+      return null;
+    }
+
+    return {
+      ...bulkFixSuggestion,
+      remainingMatches,
+    };
+  }, [bulkFixSuggestion, grid]);
+
   return (
     <form action={formAction} className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
       <input type="hidden" name="resultsRaceId" value={raceId} />
       <input type="hidden" name="resultsYear" value={year} />
       <input type="hidden" name="csvText" value={csvTextValue} />
+      {returnToWorkflowUrl ? (
+        <input type="hidden" name="returnToWorkflowUrl" value={returnToWorkflowUrl} />
+      ) : null}
 
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-[#172119] p-6 text-stone-50 shadow-[0_22px_55px_rgba(23,33,25,0.24)]">
         <div className="mb-5 rounded-2xl border border-white/10 bg-black/15 p-4">
@@ -218,7 +428,7 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
                 CSV issues
               </p>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-stone-200">
-                {state.issues.slice(0, 12).map((issue) => (
+                {state.issues.map((issue) => (
                   <li key={issue}>{issue}</li>
                 ))}
               </ul>
@@ -248,6 +458,32 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
                     </button>
                   ) : null}
                 </div>
+                {activeBulkSuggestion ? (
+                  <div className="mb-4 rounded-2xl border border-amber-300/30 bg-amber-950/30 p-4 text-sm text-amber-50 shadow-[0_10px_24px_rgba(120,53,15,0.18)]">
+                    <p className="font-semibold">Apply this change to matching rows?</p>
+                    <p className="mt-2 leading-6 text-amber-100/90">
+                      You changed {activeBulkSuggestion.fieldLabel} from <span className="font-semibold">{activeBulkSuggestion.originalValue}</span> to <span className="font-semibold">{activeBulkSuggestion.replacementValue}</span>.
+                      There {activeBulkSuggestion.remainingMatches === 1 ? "is 1 other row" : `are ${activeBulkSuggestion.remainingMatches} other rows`} that still use the old value.
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={applyBulkFix}
+                        className="rounded-full bg-amber-300 px-4 py-2 font-semibold text-amber-950 transition hover:bg-amber-200"
+                      >
+                        Apply to all matching rows
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBulkFixSuggestion(null)}
+                        className="rounded-full border border-amber-300/30 px-4 py-2 font-semibold text-amber-100 transition hover:border-amber-300/60 hover:text-white"
+                      >
+                        Keep this one only
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 {liveErrors.length > 0 && errorRows.size === 0 ? (
                   <p className="mb-3 text-sm leading-6 text-red-200">
                     Current errors are not tied to individual rows (for example, header-level issues), so no rows are highlighted.
@@ -318,6 +554,8 @@ export function ResultsEditForm({ raceId, year, csvText, knownClubNames }: Resul
                                     type="text"
                                     value={row[colIndex] ?? ""}
                                     onChange={(e) => updateCell(dataRowIndex + 1, colIndex, e.target.value)}
+                                    onFocus={() => handleCellFocus(dataRowIndex + 1, colIndex)}
+                                    onBlur={() => handleCellBlur(dataRowIndex + 1, colIndex)}
                                     className={`w-full min-w-[5rem] bg-transparent px-2 py-1.5 text-sm outline-none focus:bg-white/10 ${
                                       hasError
                                         ? "text-red-50 placeholder:text-red-300/50"

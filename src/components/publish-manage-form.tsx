@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import {
   acceptSubmissionAction,
   publishLiveAction,
+  rejectSubmissionAction,
   type ManageActionState,
 } from "@/app/publish/manage/actions";
 import type { StagingPullRequest } from "@/lib/github";
@@ -12,10 +13,29 @@ import type { StagingStatus } from "@/lib/github";
 const idle: ManageActionState = { status: "idle" };
 
 function AcceptSubmissionForm({ pr }: { pr: StagingPullRequest }) {
-  const [state, formAction, isPending] = useActionState<ManageActionState, FormData>(
+  const [acceptState, acceptFormAction, isAcceptPending] = useActionState<
+    ManageActionState,
+    FormData
+  >(
     acceptSubmissionAction,
     idle
   );
+  const [rejectState, rejectFormAction, isRejectPending] = useActionState<
+    ManageActionState,
+    FormData
+  >(
+    rejectSubmissionAction,
+    idle
+  );
+  const isPending = isAcceptPending || isRejectPending;
+  const statusState = acceptState.status !== "idle" ? acceptState : rejectState;
+  const statusTone =
+    statusState.status === "success"
+      ? "text-green-700"
+      : statusState.status === "error"
+        ? "text-red-700"
+        : "";
+  const isResolved = acceptState.status === "success" || rejectState.status === "success";
 
   return (
     <div className="flex flex-col gap-2 rounded-[1.25rem] border border-stone-900/10 bg-white/85 p-5 shadow-[0_4px_16px_rgba(47,39,29,0.06)]">
@@ -44,25 +64,43 @@ function AcceptSubmissionForm({ pr }: { pr: StagingPullRequest }) {
         </a>
       </div>
 
-      {state.status !== "idle" ? (
-        <p
-          className={`text-xs ${state.status === "success" ? "text-green-700" : "text-red-700"}`}
-        >
-          {state.message}
-        </p>
+      {statusState.status !== "idle" ? (
+        <p className={`text-xs ${statusTone}`}>{statusState.message}</p>
       ) : null}
 
-      {state.status !== "success" ? (
-        <form action={formAction}>
-          <input type="hidden" name="pullNumber" value={pr.number} />
-          <button
-            type="submit"
-            disabled={isPending}
-            className="rounded-full bg-stone-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-400"
-          >
-            {isPending ? "Accepting…" : "Accept submission"}
-          </button>
-        </form>
+      {!isResolved ? (
+        <div className="flex flex-wrap gap-2">
+          <form action={acceptFormAction}>
+            <input type="hidden" name="pullNumber" value={pr.number} />
+            <button
+              type="submit"
+              disabled={isPending}
+              className="rounded-full bg-stone-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-400"
+            >
+              {isAcceptPending ? "Accepting…" : "Accept submission"}
+            </button>
+          </form>
+
+          <form action={rejectFormAction}>
+            <input type="hidden" name="pullNumber" value={pr.number} />
+            <button
+              type="submit"
+              disabled={isPending}
+              onClick={(event) => {
+                const confirmed = window.confirm(
+                  "Reject this submission? This will close it and remove it from pending submissions."
+                );
+
+                if (!confirmed) {
+                  event.preventDefault();
+                }
+              }}
+              className="rounded-full border border-stone-300 bg-white px-4 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:bg-stone-100 disabled:text-stone-400"
+            >
+              {isRejectPending ? "Rejecting…" : "Reject submission"}
+            </button>
+          </form>
+        </div>
       ) : null}
     </div>
   );

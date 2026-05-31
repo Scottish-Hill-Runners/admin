@@ -1,13 +1,19 @@
 import { CalendarEditForm } from "@/components/calendar-edit-form";
 import { EditorialShell } from "@/components/editorial-shell";
-import { getCalendarDraft, listRaceDrafts } from "@/lib/github";
+import { getCalendarDraft, listRaceDrafts, toSafeGitRef } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
 
-export default async function CalendarPage() {
+type CalendarPageProps = {
+  searchParams?: Promise<{ ref?: string }>;
+};
+
+export default async function CalendarPage({ searchParams }: CalendarPageProps) {
   await requireEditorAccess();
+  const rawSearch = await searchParams;
+  const ref = toSafeGitRef(rawSearch?.ref);
 
   const [calendarDraft, raceItems] = await Promise.all([
-    getCalendarDraft(),
+    getCalendarDraft({ ref }),
     listRaceDrafts(),
   ]);
 

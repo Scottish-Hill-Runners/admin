@@ -57,46 +57,10 @@ export async function EditorialShell({
                 Home
               </Link>
               <Link
-                href="/news"
+                href="/submissions"
                 className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
               >
-                News
-              </Link>
-              <Link
-                href="/races"
-                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
-              >
-                Races
-              </Link>
-              <Link
-                href="/results"
-                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
-              >
-                Results
-              </Link>
-              <Link
-                href="/calendar"
-                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
-              >
-                Calendar
-              </Link>
-              <Link
-                href="/clubs"
-                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
-              >
-                Clubs
-              </Link>
-              <Link
-                href="/collections"
-                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
-              >
-                Assets
-              </Link>
-              <Link
-                href="/long-distance"
-                className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
-              >
-                Long Distance
+                Track my requests
               </Link>
               <Link
                 href="/publish"
@@ -105,10 +69,10 @@ export async function EditorialShell({
                 Publish
               </Link>
               <Link
-                href="/submissions"
+                href="/workflows#advanced-tools"
                 className="rounded-full border border-stone-900/10 bg-white/75 px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
               >
-                My submissions
+                Advanced tools
               </Link>
               {publisherAccess ? (
                 <Link

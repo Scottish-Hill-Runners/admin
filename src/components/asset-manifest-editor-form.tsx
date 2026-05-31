@@ -1,8 +1,9 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 import {
   type AssetMetadataState,
   type UploadAssetsState,
@@ -40,6 +41,8 @@ type AssetManifestEditorFormProps = {
   savePendingLabel: string;
   uploadButtonLabel: string;
   uploadPendingLabel: string;
+  returnToWorkflowUrl?: string;
+  autoPopulatePathFromUpload?: boolean;
 };
 
 const initialUploadState: UploadAssetsState = { status: "idle" };
@@ -67,7 +70,10 @@ export function AssetManifestEditorForm({
   savePendingLabel,
   uploadButtonLabel,
   uploadPendingLabel,
+  returnToWorkflowUrl,
+  autoPopulatePathFromUpload = false,
 }: AssetManifestEditorFormProps) {
+  const router = useRouter();
   const [uploadState, uploadFormAction, uploadPending] = useActionState(
     uploadAction,
     initialUploadState
@@ -79,6 +85,29 @@ export function AssetManifestEditorForm({
   const [selectedFileNames, setSelectedFileNames] = useState<string[]>([]);
   const [selectedPreviews, setSelectedPreviews] = useState<SelectedPreview[]>([]);
   const [path, setPath] = useState("");
+
+  const generatedPathFromUpload =
+    autoPopulatePathFromUpload && uploadState.status === "success"
+      ? (uploadState.uploadedPaths?.[0] ?? "")
+      : "";
+  const effectivePath = path.trim().length > 0 ? path : generatedPathFromUpload;
+
+  useEffect(() => {
+    if (uploadState.status === "success" && uploadState.redirectToWorkflowUrl) {
+      router.push(uploadState.redirectToWorkflowUrl);
+      return;
+    }
+
+    if (metadataState.status === "success" && metadataState.redirectToWorkflowUrl) {
+      router.push(metadataState.redirectToWorkflowUrl);
+    }
+  }, [
+    metadataState.redirectToWorkflowUrl,
+    metadataState.status,
+    router,
+    uploadState.redirectToWorkflowUrl,
+    uploadState.status,
+  ]);
 
   function handleFilesChange(event: ChangeEvent<HTMLInputElement>) {
     const files = event.target.files;
@@ -141,6 +170,9 @@ export function AssetManifestEditorForm({
         <p className="mt-1 mb-5 text-sm text-stone-500">{uploadDescription}</p>
 
         <form action={uploadFormAction} className="grid gap-4">
+          {returnToWorkflowUrl ? (
+            <input type="hidden" name="returnToWorkflowUrl" value={returnToWorkflowUrl} />
+          ) : null}
           <label className="block space-y-2">
             <span className="text-sm font-semibold text-stone-800">{fileFieldLabel}</span>
             <input
@@ -253,13 +285,16 @@ export function AssetManifestEditorForm({
         ) : null}
 
         <form action={metadataFormAction} className="grid gap-4">
+          {returnToWorkflowUrl ? (
+            <input type="hidden" name="returnToWorkflowUrl" value={returnToWorkflowUrl} />
+          ) : null}
           <label className="block space-y-2">
             <span className="text-sm font-semibold uppercase tracking-[0.14em] text-lime-200/80">
               Path
             </span>
             <input
               name="path"
-              value={path}
+              value={effectivePath}
               onChange={(event) => setPath(event.target.value)}
               placeholder={pathPlaceholder}
               className="w-full rounded-2xl border border-white/20 bg-black/20 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-lime-200/60"

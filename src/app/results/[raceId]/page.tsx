@@ -6,10 +6,26 @@ import { NewYearInput } from "./new-year-input";
 
 type RaceResultsHubPageProps = {
   params: Promise<{ raceId: string }>;
+  searchParams?: Promise<{ returnToWorkflow?: string }>;
 };
 
-export default async function RaceResultsHubPage({ params }: RaceResultsHubPageProps) {
+function toSafeReturnPath(value: string | undefined): string | undefined {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+export default async function RaceResultsHubPage({ params, searchParams }: RaceResultsHubPageProps) {
   const { raceId } = await params;
+  const rawSearch = await searchParams;
+  const returnToWorkflow = toSafeReturnPath(rawSearch?.returnToWorkflow);
+  const isRunnerWorkflow = returnToWorkflow?.startsWith("/workflows/runner") ?? false;
+  const returnSuffix = returnToWorkflow
+    ? `?returnToWorkflow=${encodeURIComponent(returnToWorkflow)}`
+    : "";
   await requireEditorAccess({ callbackUrl: `/results/${raceId}` });
 
   const [raceDraft, resultItems] = await Promise.all([
@@ -95,7 +111,7 @@ export default async function RaceResultsHubPage({ params }: RaceResultsHubPageP
             {resultItems.map((item) => (
               <li key={item.year}>
                 <Link
-                  href={`/results/${encodeURIComponent(raceId)}/${encodeURIComponent(item.year)}`}
+                  href={`/results/${encodeURIComponent(raceId)}/${encodeURIComponent(item.year)}${returnSuffix}`}
                   className="block rounded-2xl border border-stone-900/10 bg-stone-50 px-5 py-4 text-sm font-semibold text-stone-900 transition hover:border-stone-900/25 hover:bg-white"
                 >
                   {item.year}
@@ -109,17 +125,19 @@ export default async function RaceResultsHubPage({ params }: RaceResultsHubPageP
         )}
       </section>
 
-      <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
-        <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900">
-          Add new results
-        </h2>
-        <p className="mt-3 text-sm leading-6 text-stone-600">
-          Enter the year (or a year suffix like <span className="font-mono">2024-B</span> for a second race) to create a new results file.
-        </p>
-        <div className="mt-5">
-          <NewYearInput raceId={raceId} />
-        </div>
-      </section>
+      {!isRunnerWorkflow ? (
+        <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
+          <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900">
+            Add new results
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-stone-600">
+            Enter the year (or a year suffix like <span className="font-mono">2024-B</span> for a second race) to create a new results file.
+          </p>
+          <div className="mt-5">
+            <NewYearInput raceId={raceId} returnToWorkflowUrl={returnToWorkflow} />
+          </div>
+        </section>
+      ) : null}
     </EditorialShell>
   );
 }

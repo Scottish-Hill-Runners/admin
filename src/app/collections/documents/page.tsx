@@ -1,18 +1,35 @@
 import Link from "next/link";
-import { AssetManifestEditorForm } from "@/components/asset-manifest-editor-form";
+import { DocumentsUploadForm } from "@/components/documents-upload-form";
 import { EditorialShell } from "@/components/editorial-shell";
-import {
-  saveDocumentsManifestDraft,
-  uploadDocumentsDraft,
-} from "@/app/collections/actions";
-import { getDocumentsManifestDraft } from "@/lib/github";
+import { getDocumentsManifestDraft, toSafeGitRef } from "@/lib/github";
 import { parseAndValidateDocumentsManifestYaml } from "@/lib/collections-yaml";
 import { requireEditorAccess } from "@/lib/route-protection";
 
-export default async function DocumentCollectionsPage() {
-  await requireEditorAccess({ callbackUrl: "/collections/documents" });
+type DocumentCollectionsPageProps = {
+  searchParams?: Promise<{ returnToWorkflow?: string; ref?: string }>;
+};
 
-  const yamlText = await getDocumentsManifestDraft();
+function toSafeReturnPath(value: string | undefined): string | undefined {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+export default async function DocumentCollectionsPage({ searchParams }: DocumentCollectionsPageProps) {
+  const params = searchParams ? await searchParams : undefined;
+  const returnToWorkflowUrl = toSafeReturnPath(params?.returnToWorkflow);
+  const ref = toSafeGitRef(params?.ref);
+
+  await requireEditorAccess({
+    callbackUrl: returnToWorkflowUrl
+      ? `/collections/documents?returnToWorkflow=${encodeURIComponent(returnToWorkflowUrl)}`
+      : "/collections/documents",
+  });
+
+  const yamlText = await getDocumentsManifestDraft({ ref });
   let currentCount: number | undefined;
   let loadError: string | null = null;
 
@@ -30,8 +47,8 @@ export default async function DocumentCollectionsPage() {
   return (
     <EditorialShell
       eyebrow="Documents"
-      title="Document manifest editor"
-      description="Upload published documents and register them in the documents manifest."
+      title="Document upload"
+      description="Upload documents and add details for each file."
     >
       <nav className="flex flex-wrap items-center gap-2 text-sm text-stone-600">
         <Link href="/collections" className="hover:text-stone-900 hover:underline underline-offset-4">
@@ -41,28 +58,21 @@ export default async function DocumentCollectionsPage() {
         <span className="font-semibold text-stone-900">Documents</span>
       </nav>
 
-      <AssetManifestEditorForm
-        uploadAction={uploadDocumentsDraft}
-        saveAction={saveDocumentsManifestDraft}
-        uploadPathPrefix="blobs/documents"
-        uploadHeading="Upload document files"
-        uploadDescription="Upload PDFs, DOCX files, and other document assets into blobs/documents."
-        metadataHeading="Update document list"
-        metadataDescription="Register one document at a time with metadata for title, description, and search tags."
-        pathHelp="Document entries should point at blobs/documents/... paths. Upload validation allows non-image file types."
-        fileFieldLabel="Files"
-        previewMode="file-list"
-        defaultTier="document"
-        defaultTags="document, archive"
-        pathPlaceholder="blobs/documents/annual-report.pdf"
+      {returnToWorkflowUrl ? (
+        <div className="mt-4">
+          <Link
+            href={returnToWorkflowUrl}
+            className="inline-flex items-center rounded-full border border-stone-900/15 bg-white px-4 py-2 text-sm font-medium text-stone-900 transition hover:bg-stone-100"
+          >
+            Back to workflow
+          </Link>
+        </div>
+      ) : null}
+
+      <DocumentsUploadForm
         currentCount={currentCount}
         loadError={loadError}
-        showTitleField
-        showDescriptionField
-        saveButtonLabel="Save document list"
-        savePendingLabel="Saving…"
-        uploadButtonLabel="Upload and save"
-        uploadPendingLabel="Uploading…"
+        returnToWorkflowUrl={returnToWorkflowUrl}
       />
     </EditorialShell>
   );

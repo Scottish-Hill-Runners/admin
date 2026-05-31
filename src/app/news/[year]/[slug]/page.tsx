@@ -1,19 +1,22 @@
 import Link from "next/link";
 import { EditorialShell } from "@/components/editorial-shell";
 import { NewsEditorForm } from "@/components/news-editor-form";
-import { getNewsDraft } from "@/lib/github";
+import { getNewsDraft, toSafeGitRef } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
 
 type NewsEditPageProps = {
   params: Promise<{ year: string; slug: string }>;
+  searchParams?: Promise<{ ref?: string }>;
 };
 
-export default async function NewsEditPage({ params }: NewsEditPageProps) {
+export default async function NewsEditPage({ params, searchParams }: NewsEditPageProps) {
   const { year, slug } = await params;
+  const rawSearch = await searchParams;
+  const ref = toSafeGitRef(rawSearch?.ref);
   const fullSlug = `${year}/${slug}`;
   await requireEditorAccess({ callbackUrl: `/news/${year}/${slug}` });
 
-  const initialValues = await getNewsDraft(fullSlug);
+  const initialValues = await getNewsDraft(fullSlug, { ref });
 
   return (
     <EditorialShell

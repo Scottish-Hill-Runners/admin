@@ -11,7 +11,21 @@ export type RaceActionState = {
   status: "idle" | "success" | "error";
   message?: string;
   fieldErrors?: Partial<Record<keyof RaceFormValues, string[]>>;
+  redirectToWorkflowUrl?: string;
 };
+
+function toSafeReturnPath(value: FormDataEntryValue | null): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
 
 function buildRaceMarkdown(values: RaceFormValues): string {
   return matter.stringify(values.content.trim(), {
@@ -33,6 +47,7 @@ export async function saveRaceDraft(
   _previousState: RaceActionState,
   formData: FormData
 ): Promise<RaceActionState> {
+  const returnToWorkflowUrl = toSafeReturnPath(formData.get("returnToWorkflowUrl"));
   const parsed = raceFormSchema.safeParse({
     raceId: formData.get("raceId"),
     title: formData.get("title"),
@@ -82,6 +97,7 @@ export async function saveRaceDraft(
     return {
       status: "success",
       message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
+      redirectToWorkflowUrl: returnToWorkflowUrl,
     };
   } catch (error) {
     if (isGitHubAccessError(error)) {

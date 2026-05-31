@@ -8,8 +8,6 @@ import {
   listAllClubNameSet,
 } from "@/lib/github";
 import {
-  extractRaceResultsWinnerSummary,
-  RaceWinner,
   validateRaceResultsCsv,
 } from "@/lib/results-csv";
 import {
@@ -23,36 +21,22 @@ export type ResultsUploadState = {
   message?: string;
   issues?: string[];
   fieldErrors?: Partial<Record<keyof ResultsUploadValues, string[]>>;
-  redirectToNewsUrl?: string;
+  redirectToWorkflowUrl?: string;
+  submissionNumber?: number;
+  submissionUrl?: string;
 };
 
-function formatTime(time: string): string {
-  return time.replace(/^00:/, "");
-}
+function toSafeReturnPath(value: FormDataEntryValue | null): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
 
-function formatWinnerLine(winner: RaceWinner): string {
-  const clubPart = winner.club ? ` (${winner.club})` : "";
-  const alsoWon = Array.from(winner.alsoWon).map((c) => c.label).sort();
-  const alsoWonPart =
-    winner.alsoWon.size === 0
-      ? ""
-      : winner.alsoWon.size === 1
-        ? ` (also first ${alsoWon[0]})`
-        : ` (also first ${alsoWon.slice(0, -1).join(", ")} and ${alsoWon[alsoWon.length - 1]})`;
-  return `- ${winner.category.label}${alsoWonPart}: [${winner.name}](/runner?name=${encodeURIComponent(winner.name)})${clubPart} - ${formatTime(winner.time)}`;
-}
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
 
-function formatWinnerInline(winner: { name: string; club: string; time: string }) {
-  const clubPart = winner.club ? ` (${winner.club})` : "";
-  return `${winner.name}${clubPart} in ${formatTime(winner.time)}`;
-}
-
-function toRaceTitle(raceId: string): string {
-  return raceId
-    .split(/[-_]+/)
-    .filter((part) => part.length > 0)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  return trimmed;
 }
 
 function applyShortenedRouteToYear(year: string, shortenedRoute: boolean): string {
@@ -72,99 +56,19 @@ function toBranchSafeSegment(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-function toOrdinal(day: number): string {
-  const remainder100 = day % 100;
-  if (remainder100 >= 11 && remainder100 <= 13) {
-    return `${day}th`;
-  }
-
-  const remainder10 = day % 10;
-  if (remainder10 === 1) {
-    return `${day}st`;
-  }
-
-  if (remainder10 === 2) {
-    return `${day}nd`;
-  }
-
-  if (remainder10 === 3) {
-    return `${day}rd`;
-  }
-
-  return `${day}th`;
-}
-
-function formatLeadDate(dateIso: string): string {
-  const parsed = new Date(`${dateIso}T12:00:00Z`);
-  if (Number.isNaN(parsed.getTime())) {
-    return dateIso;
-  }
-
-  const weekday = parsed.toLocaleDateString("en-GB", {
-    weekday: "long",
-    timeZone: "UTC",
-  });
-  const month = parsed.toLocaleDateString("en-GB", {
-    month: "long",
-    timeZone: "UTC",
-  });
-
-  return `${weekday} ${toOrdinal(parsed.getUTCDate())} ${month}`;
-}
-
-function buildLeadSentence(
-  raceTitle: string,
-  leadDate: string,
-  winners: RaceWinner[]
-): string {
-  const maleWinner = winners.find((w) => w.category.group === "male");
-  const femaleWinner = winners.find((w) => w.category.group === "female");
-  if (maleWinner && femaleWinner)
-    return `Wins for ${formatWinnerInline(maleWinner)} and ${formatWinnerInline(femaleWinner)} at the ${raceTitle} race on ${leadDate}.`;
-  return `Results are now available for the ${raceTitle} race on ${leadDate}.`;
-}
-
-function buildNewsPrefillUrl(raceId: string, year: string, csvText: string): string {
-  const today = new Date().toISOString().slice(0, 10);
-  const { winners, nEntrants } = extractRaceResultsWinnerSummary(csvText);
-  const raceTitle = toRaceTitle(raceId);
-  const leadDate = formatLeadDate(today);
-  const title = `${raceTitle} ${year} results`;
-  const excerpt = buildLeadSentence(raceTitle, leadDate, winners);
-  const nonBinaryWinner = winners.find((w) => w.category.group === "nonBinary");
-  const content = [
-    `## [${raceTitle} ${year} results](/races/${encodeURIComponent(raceId)}?year=${encodeURIComponent(year)})`,
-    "",
-    excerpt,
-    nonBinaryWinner
-      ? `Top non-binary finisher: ${formatWinnerInline(nonBinaryWinner)}.`
-      : "",
-    "",
-    "### Highlights",
-    ...winners.map(formatWinnerLine),
-    `- ${nEntrants} entrants in total.`,
-    "",
-    `Full results can be found [on the race results page](/races/${encodeURIComponent(raceId)}?year=${encodeURIComponent(year)}).`,
-    "",
-    "Congratulations to all runners and thanks to organisers and volunteers.",
-  ].join("\n");
-
-  const params = new URLSearchParams({
-    fromResults: "1",
-    prefillDate: today,
-    prefillTitle: title,
-    prefillExcerpt: excerpt,
-    prefillContent: content,
-  });
-
-  return `/news?${params.toString()}`;
+function appendQueryParam(path: string, key: string, value: string): string {
+  const [pathname, search = ""] = path.split("?", 2);
+  const params = new URLSearchParams(search);
+  params.set(key, value);
+  const nextSearch = params.toString();
+  return nextSearch ? `${pathname}?${nextSearch}` : pathname;
 }
 
 export async function saveResultsDraft(
   _previousState: ResultsUploadState,
   formData: FormData
 ): Promise<ResultsUploadState> {
-  const shouldPrepareNewsTemplate = formData.get("prepareNewsTemplate") === "on";
+  const returnToWorkflowUrl = toSafeReturnPath(formData.get("returnToWorkflowUrl"));
   const shortenedRoute = formData.get("shortenedRoute") === "on";
   const submittedYear = formData.get("resultsYear");
   const parsed = resultsUploadSchema.safeParse({
@@ -244,13 +148,15 @@ export async function saveResultsDraft(
 
     return {
       status: "success",
-      message: shouldPrepareNewsTemplate
-        ? `Saved draft #${result.prNumber}: ${result.prUrl}. Redirecting to a prefilled news template.`
+      message: returnToWorkflowUrl
+        ? `Saved draft #${result.prNumber}: ${result.prUrl}. Returning to your workflow.`
         : `Saved draft #${result.prNumber}: ${result.prUrl}`,
       issues: issueMessages,
-      redirectToNewsUrl: shouldPrepareNewsTemplate
-        ? buildNewsPrefillUrl(values.raceId, values.year, values.csvText)
+      redirectToWorkflowUrl: returnToWorkflowUrl
+        ? appendQueryParam(returnToWorkflowUrl, "resultsSubmission", String(result.prNumber))
         : undefined,
+      submissionNumber: result.prNumber,
+      submissionUrl: result.prUrl,
     };
   } catch (error) {
     if (isGitHubAccessError(error)) {

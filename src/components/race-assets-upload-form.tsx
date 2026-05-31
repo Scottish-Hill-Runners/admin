@@ -9,6 +9,7 @@ import {
 } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   uploadRaceAssets,
   type RaceAssetsActionState,
@@ -26,6 +27,7 @@ type RaceItem = { raceId: string };
 type RaceAssetsUploadFormProps = {
   raceItems?: RaceItem[];
   fixedRaceId?: string;
+  returnToWorkflowUrl?: string;
 };
 
 type GpxInfo = {
@@ -185,7 +187,8 @@ function FileIcon() {
 
 const initialState: RaceAssetsActionState = { status: "idle" };
 
-export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssetsUploadFormProps) {
+export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId, returnToWorkflowUrl }: RaceAssetsUploadFormProps) {
+  const router = useRouter();
   const [state, formAction, isPending] = useActionState(
     uploadRaceAssets,
     initialState,
@@ -209,6 +212,14 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
       }
     };
   }, [imageInfo]);
+
+  useEffect(() => {
+    if (state.status !== "success" || !state.redirectToWorkflowUrl) {
+      return;
+    }
+
+    router.push(state.redirectToWorkflowUrl);
+  }, [router, state.redirectToWorkflowUrl, state.status]);
 
   const handleGpxChange = useCallback((file: File | null) => {
     if (!file) {
@@ -240,6 +251,9 @@ export function RaceAssetsUploadForm({ raceItems = [], fixedRaceId }: RaceAssets
 
   return (
     <form action={formAction} className="space-y-6">
+      {returnToWorkflowUrl ? (
+        <input type="hidden" name="returnToWorkflowUrl" value={returnToWorkflowUrl} />
+      ) : null}
       {/* ── Race ID ─────────────────────────────────────────── */}
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <h2 className="font-[family:var(--font-heading)] text-xl text-stone-900">

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, useTransition, type ChangeEvent } from "react";
 import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 import {
   saveNewsDraft,
   suggestNewsSlugSuffixAction,
@@ -40,6 +41,7 @@ type NewsEditorFormProps = {
   } | null;
   suggestedDate?: string;
   suggestedSlugSuffix?: string;
+  returnToWorkflowUrl?: string;
 };
 
 function getInitialSlugSuffix(initialValues: NewsEditorFormProps["initialValues"]): string {
@@ -88,8 +90,10 @@ function InputField({
 export function NewsEditorForm({
   initialValues,
   suggestedDate,
-  suggestedSlugSuffix
+  suggestedSlugSuffix,
+  returnToWorkflowUrl,
 }: NewsEditorFormProps) {
+  const router = useRouter();
   const [state, formAction, isPending] = useActionState(saveNewsDraft, initialState);
   const [isResuggesting, startResuggesting] = useTransition();
   const buttonLabel = isPending ? "Saving..." : "Save draft";
@@ -116,6 +120,14 @@ export function NewsEditorForm({
     if (state.status === "success") clearDraft();
   }, [state.status, clearDraft]);
 
+  useEffect(() => {
+    if (state.status !== "success" || !state.redirectToWorkflowUrl) {
+      return;
+    }
+
+    router.push(state.redirectToWorkflowUrl);
+  }, [router, state.redirectToWorkflowUrl, state.status]);
+
   const requestSuffixSuggestion = (nextDate: string) => {
     if (isEditingExistingItem || !isIsoNewsDate(nextDate)) {
       setSuffixHint(null);
@@ -138,6 +150,9 @@ export function NewsEditorForm({
 
   return (
     <form ref={formRef} action={formAction} onInput={onFormInput} className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+      {returnToWorkflowUrl ? (
+        <input type="hidden" name="returnToWorkflowUrl" value={returnToWorkflowUrl} />
+      ) : null}
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <div className="grid gap-5">
           <InputField

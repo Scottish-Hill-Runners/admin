@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 import { saveClubDraft, type ClubActionState } from "@/app/clubs/actions";
 import { MarkdownEditorField } from "@/components/markdown-editor-field";
 import { useFormDraft } from "@/lib/use-form-draft";
@@ -17,13 +18,15 @@ type InputProps = {
   placeholder?: string;
   defaultValue?: string;
   errors?: string[];
+  readOnly?: boolean;
 };
 
 type ClubEditorFormProps = {
   initialValues?: ClubInfoFormData | null;
+  returnToWorkflowUrl?: string;
 };
 
-function InputField({ label, name, placeholder, defaultValue, errors }: InputProps) {
+function InputField({ label, name, placeholder, defaultValue, errors, readOnly }: InputProps) {
   return (
     <label className="block space-y-2">
       <span className="text-sm font-semibold uppercase tracking-[0.16em] text-stone-600">
@@ -33,7 +36,13 @@ function InputField({ label, name, placeholder, defaultValue, errors }: InputPro
         name={name}
         placeholder={placeholder}
         defaultValue={defaultValue}
-        className="w-full rounded-2xl border border-stone-900/10 bg-stone-50 px-4 py-3 text-base text-stone-900 outline-none transition focus:border-stone-900/40"
+        readOnly={readOnly}
+        aria-readonly={readOnly || undefined}
+        className={`w-full rounded-2xl border border-stone-900/10 px-4 py-3 text-base text-stone-900 outline-none transition ${
+          readOnly
+            ? "cursor-not-allowed bg-stone-100 text-stone-500"
+            : "bg-stone-50 focus:border-stone-900/40"
+        }`}
       />
       {errors?.map((error) => (
         <p key={error} className="text-sm text-red-700">
@@ -44,9 +53,11 @@ function InputField({ label, name, placeholder, defaultValue, errors }: InputPro
   );
 }
 
-export function ClubEditorForm({ initialValues }: ClubEditorFormProps) {
+export function ClubEditorForm({ initialValues, returnToWorkflowUrl }: ClubEditorFormProps) {
+  const router = useRouter();
   const [state, formAction, isPending] = useActionState(saveClubDraft, initialState);
   const formId = useId();
+  const isExistingClub = Boolean(initialValues);
   const storageKey = initialValues ? `draft:club:${initialValues.clubId}` : "draft:club:new";
   const { formRef, restoredDraft, onFormInput, onMarkdownChange, clearDraft } =
     useFormDraft(storageKey);
@@ -57,6 +68,14 @@ export function ClubEditorForm({ initialValues }: ClubEditorFormProps) {
   useEffect(() => {
     if (state.status === "success") clearDraft();
   }, [state.status, clearDraft]);
+
+  useEffect(() => {
+    if (state.status !== "success" || !state.redirectToWorkflowUrl) {
+      return;
+    }
+
+    router.push(state.redirectToWorkflowUrl);
+  }, [router, state.redirectToWorkflowUrl, state.status]);
 
   return (
     <form
@@ -71,6 +90,9 @@ export function ClubEditorForm({ initialValues }: ClubEditorFormProps) {
         }
       }}
     >
+      {returnToWorkflowUrl ? (
+        <input type="hidden" name="returnToWorkflowUrl" value={returnToWorkflowUrl} />
+      ) : null}
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <div className="grid gap-5 md:grid-cols-2">
           <InputField
@@ -79,6 +101,7 @@ export function ClubEditorForm({ initialValues }: ClubEditorFormProps) {
             placeholder="(letters and numbers only, e.g. 'Carnethy')"
             defaultValue={restoredDraft?.clubId ?? initialValues?.clubId}
             errors={state.fieldErrors?.clubId}
+            readOnly={isExistingClub}
           />
           <InputField
             label="Full name"

@@ -4,8 +4,26 @@ import { LongDistanceEditorForm } from "@/components/long-distance-editor-form";
 import { listLongDistanceDrafts } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
 
-export default async function LongDistancePage() {
+type LongDistancePageProps = {
+  searchParams?: Promise<{ returnToWorkflow?: string }>;
+};
+
+function toSafeReturnPath(value: string | undefined): string | undefined {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+export default async function LongDistancePage({ searchParams }: LongDistancePageProps) {
   await requireEditorAccess({ callbackUrl: "/long-distance" });
+  const params = await searchParams;
+  const returnToWorkflowUrl = toSafeReturnPath(params?.returnToWorkflow);
+  const returnSuffix = returnToWorkflowUrl
+    ? `?returnToWorkflow=${encodeURIComponent(returnToWorkflowUrl)}`
+    : "";
   const items = await listLongDistanceDrafts();
 
   return (
@@ -23,7 +41,7 @@ export default async function LongDistancePage() {
             {items.map((item) => (
               <li key={item.slug}>
                 <Link
-                  href={`/long-distance/${encodeURIComponent(item.slug)}`}
+                  href={`/long-distance/${encodeURIComponent(item.slug)}${returnSuffix}`}
                   className="block rounded-2xl border border-stone-900/10 bg-stone-50 px-5 py-4 text-sm font-semibold text-stone-900 transition hover:border-stone-900/25 hover:bg-white"
                 >
                   {item.slug}
@@ -40,7 +58,7 @@ export default async function LongDistancePage() {
         <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-6">
           Add new report
         </h2>
-        <LongDistanceEditorForm initialValues={null} />
+        <LongDistanceEditorForm initialValues={null} returnToWorkflowUrl={returnToWorkflowUrl} />
       </section>
     </EditorialShell>
   );

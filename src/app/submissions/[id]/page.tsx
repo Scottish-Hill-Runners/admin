@@ -109,6 +109,81 @@ function buildTimeline(status: SubmissionStatus, createdAt: string, updatedAt: s
   ];
 }
 
+function toChangedFileHref(path: string, ref?: string): string | null {
+  const withRef = (href: string): string => {
+    if (!ref) {
+      return href;
+    }
+
+    const params = new URLSearchParams();
+    params.set("ref", ref);
+    return `${href}?${params.toString()}`;
+  };
+
+  if (path === "calendar.csv") {
+    return withRef("/calendar");
+  }
+
+  const newsMatch = /^news\/(\d{4})\/(.+)\.md$/.exec(path);
+  if (newsMatch) {
+    return withRef(`/news/${encodeURIComponent(newsMatch[1])}/${encodeURIComponent(newsMatch[2])}`);
+  }
+
+  const raceResultsMatch = /^races\/([^/]+)\/([^/]+)\.csv$/.exec(path);
+  if (raceResultsMatch) {
+    return withRef(`/results/${encodeURIComponent(raceResultsMatch[1])}/${encodeURIComponent(raceResultsMatch[2])}`);
+  }
+
+  const raceMetadataMatch = /^races\/([^/]+)\/index\.md$/.exec(path);
+  if (raceMetadataMatch) {
+    return withRef(`/races/${encodeURIComponent(raceMetadataMatch[1])}`);
+  }
+
+  const raceImagesMatch = /^races\/([^/]+)\/images\.ya?ml$/.exec(path);
+  if (raceImagesMatch) {
+    return withRef(`/races/${encodeURIComponent(raceImagesMatch[1])}/images`);
+  }
+
+  const raceAssetsMatch = /^races\/([^/]+)\/(map\.[^/]+|route\.geojson)$/.exec(path);
+  if (raceAssetsMatch) {
+    return withRef(`/race-assets/${encodeURIComponent(raceAssetsMatch[1])}`);
+  }
+
+  const clubMatch = /^clubs\/([^/]+)\.md$/.exec(path);
+  if (clubMatch) {
+    return withRef(`/clubs/${encodeURIComponent(clubMatch[1])}`);
+  }
+
+  const longDistanceMatch = /^long-distance\/([^/]+)\.md$/.exec(path);
+  if (longDistanceMatch) {
+    return withRef(`/long-distance/${encodeURIComponent(longDistanceMatch[1])}`);
+  }
+
+  const infoMatch = /^info\/(.+)\.md$/.exec(path);
+  if (infoMatch) {
+    const segments = infoMatch[1]
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => encodeURIComponent(segment));
+
+    return withRef(segments.length > 0 ? `/info/${segments.join("/")}` : "/info");
+  }
+
+  if (path === "collections/homepage-images.yaml" || path === "homepage/images.yaml") {
+    return withRef("/collections/homepage");
+  }
+
+  if (path === "collections/documents.yaml" || path === "documents/manifest.yaml") {
+    return withRef("/collections/documents");
+  }
+
+  if (path === "collections/committee-portraits.yaml" || path === "committee/portraits.yaml") {
+    return withRef("/collections/committee");
+  }
+
+  return null;
+}
+
 export default async function SubmissionDetailPage({ params }: SubmissionDetailPageProps) {
   const { id } = await params;
   await requireEditorAccess({ callbackUrl: `/submissions/${id}` });
@@ -219,14 +294,27 @@ export default async function SubmissionDetailPage({ params }: SubmissionDetailP
           </p>
         ) : (
           <ul className="mt-4 space-y-2">
-            {submission.changedFiles.map((file) => (
-              <li key={`${file.changeType}-${file.path}`} className="rounded-xl border border-stone-900/10 bg-stone-50 px-4 py-3">
-                <p className="text-sm font-semibold text-stone-900">{file.path}</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.14em] text-stone-500">
-                  Change: {file.changeType}
-                </p>
-              </li>
-            ))}
+            {submission.changedFiles.map((file) => {
+              const href = toChangedFileHref(file.path, submission.headRef);
+
+              return (
+                <li key={`${file.changeType}-${file.path}`} className="rounded-xl border border-stone-900/10 bg-stone-50 px-4 py-3">
+                  {href ? (
+                    <Link
+                      href={href}
+                      className="text-sm font-semibold text-stone-900 underline decoration-stone-300 underline-offset-4 transition hover:text-stone-700 hover:decoration-stone-600"
+                    >
+                      {file.path}
+                    </Link>
+                  ) : (
+                    <p className="text-sm font-semibold text-stone-900">{file.path}</p>
+                  )}
+                  <p className="mt-1 text-xs uppercase tracking-[0.14em] text-stone-500">
+                    Change: {file.changeType}
+                  </p>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

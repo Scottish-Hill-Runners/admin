@@ -4,8 +4,26 @@ import { RaceSearchList } from "@/components/race-search-list";
 import { listRaceDrafts } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
 
-export default async function RacesPage() {
+type RacesPageProps = {
+  searchParams?: Promise<{ returnToWorkflow?: string }>;
+};
+
+function toSafeReturnPath(value: string | undefined): string | undefined {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+export default async function RacesPage({ searchParams }: RacesPageProps) {
   await requireEditorAccess({ callbackUrl: "/races" });
+  const params = await searchParams;
+  const returnToWorkflow = toSafeReturnPath(params?.returnToWorkflow);
+  const returnSuffix = returnToWorkflow
+    ? `?returnToWorkflow=${encodeURIComponent(returnToWorkflow)}`
+    : "";
   const raceItems = await listRaceDrafts();
 
   return (
@@ -30,6 +48,7 @@ export default async function RacesPage() {
           <RaceSearchList
             raceItems={raceItems}
             hrefPrefix="/races"
+            hrefSuffix={returnSuffix}
           />
         </div>
       </details>
@@ -38,7 +57,7 @@ export default async function RacesPage() {
         <h2 className="font-[family:var(--font-heading)] text-2xl text-stone-900 mb-6">
           Add new race
         </h2>
-        <RaceEditorForm initialValues={null} />
+        <RaceEditorForm initialValues={null} returnToWorkflowUrl={returnToWorkflow} />
       </section>
     </EditorialShell>
   );
