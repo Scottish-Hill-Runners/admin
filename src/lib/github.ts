@@ -568,7 +568,11 @@ async function getExistingFileSha(
 }
 
 async function getRepositoryFile(path: string): Promise<string>;
-async function getRepositoryFile(path: string, options: { nullOn404: true }): Promise<string | null>;
+async function getRepositoryFile(path: string, options: { ref: string }): Promise<string>;
+async function getRepositoryFile(
+  path: string,
+  options: { nullOn404: true; ref?: string }
+): Promise<string | null>;
 async function getRepositoryFile(path: string, options?: { nullOn404?: boolean; ref?: string }): Promise<string | null> {
   const client = getGitHubClient();
   if (!client) {
@@ -617,7 +621,11 @@ export async function getContentFileAtRef(
   ref: string,
   options?: { nullOn404?: boolean }
 ): Promise<string | null> {
-  return getRepositoryFile(path, { nullOn404: options?.nullOn404, ref });
+  if (options?.nullOn404) {
+    return getRepositoryFile(path, { nullOn404: true, ref });
+  }
+
+  return getRepositoryFile(path, { ref });
 }
 
 async function getRepositoryDirectory(path: string): Promise<RepositoryDirectoryEntry[]>;

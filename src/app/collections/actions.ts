@@ -65,6 +65,8 @@ export type UploadAssetsState = {
   message?: string;
   fieldErrors?: {
     assetFiles?: string[];
+    imageFiles?: string[];
+    imagesMetadata?: string[];
   };
   uploadedPaths?: string[];
   redirectToWorkflowUrl?: string;
