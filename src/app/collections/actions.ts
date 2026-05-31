@@ -27,6 +27,7 @@ import { computeHashFilename, optimizeUploadedImage } from "@/lib/image-upload";
 import { toSafeUploadFilename, type UploadMode } from "@/lib/upload-filename";
 import { RACE_IMAGE_LICENSE_IDS } from "@/lib/race-image-licenses";
 import { type RaceImageItem, type RaceImagesYamlValues } from "@/lib/collections-schema";
+import { uploadBufferToCloudinary } from "@/lib/cloudinary";
 
 const MAX_UPLOAD_FILES = 20;
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
@@ -68,6 +69,8 @@ export type UploadAssetsState = {
     imageFiles?: string[];
     imagesMetadata?: string[];
   };
+  prUrl?: string;
+  prNumber?: number;
   uploadedPaths?: string[];
   redirectToWorkflowUrl?: string;
 };
@@ -516,8 +519,7 @@ export async function uploadHomepageImagesDraft(
 
         return {
           path: `blobs/homepage/${hashName}`,
-          content: optimized.buffer.toString("base64"),
-          encoding: "base64" as const,
+          buffer: optimized.buffer,
           metadata: metadataArray[index],
         };
       })
@@ -537,6 +539,12 @@ export async function uploadHomepageImagesDraft(
     }
 
     for (const image of processedImages) {
+      await uploadBufferToCloudinary({
+        buffer: image.buffer,
+        publicId: image.path,
+        resourceType: "image",
+      });
+
       nextData.images.push({
         path: image.path,
         tier: "strong",
@@ -559,41 +567,39 @@ export async function uploadHomepageImagesDraft(
       };
     }
 
-    const editorSession = await getEditorSession();
-    const author = buildPrAuthor(editorSession);
-    const autoMerge = formData.get("autoMerge") === "on";
-    const branchName = `shr-admin/homepage-assets-${Date.now()}`;
-    const result = await createContentPullRequestWithFiles({
-      title: `Homepage images: upload ${processedImages.length}`,
-      files: [
-        ...processedImages.map((image) => ({
-          path: image.path,
-          content: image.content,
-          encoding: image.encoding,
-        })),
-        {
-          path: "homepage/images.yaml",
-          content: Buffer.from(stringifyHomepageImagesYaml(finalValidated.data)).toString("base64"),
-          encoding: "base64" as const,
-        },
-      ],
-      commitMessage: `Upload homepage images (${processedImages.length})`,
-      prTitle: `Homepage images: upload ${processedImages.length}`,
-      prBody:
-        `Homepage image upload created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
-        `- Content repo: ${contentConfig.repo}\n` +
-        `- Images uploaded: ${processedImages.length}\n` +
-        `- Updated file: homepage/images.yaml`,
-      branchName,
-      author,
-      labels: autoMerge ? ["auto-merge"] : undefined,
-    });
+    let result: Awaited<ReturnType<typeof createYamlUpdatePullRequest>>;
+    try {
+      result = await createYamlUpdatePullRequest({
+        path: "homepage/images.yaml",
+        content: stringifyHomepageImagesYaml(finalValidated.data),
+        branchPrefix: "homepage-assets-yaml",
+        prTitle: `Homepage images: upload ${processedImages.length}`,
+        commitMessage: `Update homepage/images.yaml (${processedImages.length} new image${processedImages.length === 1 ? "" : "s"})`,
+        summary: `Added ${processedImages.length} homepage image${processedImages.length === 1 ? "" : "s"}`,
+        autoMerge: formData.get("autoMerge") === "on",
+      });
+    } catch (error) {
+      if (isGitHubAccessError(error)) {
+        return {
+          status: "error",
+          message: "Publishing is not set up yet. Please contact an administrator.",
+        };
+      }
+
+      return {
+        status: "error",
+        message:
+          "Images were uploaded, but saving the homepage image list draft failed. Please retry to save the list.",
+      };
+    }
 
     return {
       status: "success",
       message: returnToWorkflowUrl
         ? `Saved draft #${result.prNumber}: ${result.prUrl}. Returning to your workflow.`
         : `Saved draft #${result.prNumber}: ${result.prUrl}`,
+      prUrl: result.prUrl,
+      prNumber: result.prNumber,
       uploadedPaths: processedImages.map((image) => image.path),
       redirectToWorkflowUrl: returnToWorkflowUrl,
     };
@@ -1301,12 +1307,19 @@ export async function submitDocumentsDraft(
         const bytes = Buffer.from(await file.arrayBuffer());
         return {
           path: `blobs/documents/${safeName}`,
-          content: bytes.toString("base64"),
-          encoding: "base64" as const,
+          bytes,
           metadata: metadataArray[index],
         };
       })
     );
+
+    for (const file of files) {
+      await uploadBufferToCloudinary({
+        buffer: file.bytes,
+        publicId: file.path,
+        resourceType: "raw",
+      });
+    }
 
     const nextData = structuredClone(validated.data);
     for (const file of files) {
@@ -1328,35 +1341,31 @@ export async function submitDocumentsDraft(
       };
     }
 
-    const editorSession = await getEditorSession();
-    const author = buildPrAuthor(editorSession);
-    const autoMerge = formData.get("autoMerge") === "on";
-    const branchName = `shr-admin/documents-${Date.now()}`;
-    const result = await createContentPullRequestWithFiles({
-      title: `Documents: upload ${files.length}`,
-      files: [
-        ...files.map((file) => ({
-          path: file.path,
-          content: file.content,
-          encoding: file.encoding,
-        })),
-        {
-          path: "documents/manifest.yaml",
-          content: Buffer.from(stringifyDocumentsManifestYaml(finalValidated.data)).toString("base64"),
-          encoding: "base64" as const,
-        },
-      ],
-      commitMessage: `Upload documents (${files.length})`,
-      prTitle: `Documents: upload ${files.length}`,
-      prBody:
-        `Document upload created by ${author ? `${author.name} <${author.email}>` : "unknown"}.\n\n` +
-        `- Content repo: ${contentConfig.repo}\n` +
-        `- Files uploaded: ${files.length}\n` +
-        `- Updated file: documents/manifest.yaml`,
-      branchName,
-      author,
-      labels: autoMerge ? ["auto-merge"] : undefined,
-    });
+    let result: Awaited<ReturnType<typeof createYamlUpdatePullRequest>>;
+    try {
+      result = await createYamlUpdatePullRequest({
+        path: "documents/manifest.yaml",
+        content: stringifyDocumentsManifestYaml(finalValidated.data),
+        branchPrefix: "documents-yaml",
+        prTitle: `Documents: upload ${files.length}`,
+        commitMessage: `Update documents/manifest.yaml (${files.length} new document${files.length === 1 ? "" : "s"})`,
+        summary: `Added ${files.length} document${files.length === 1 ? "" : "s"}`,
+        autoMerge: formData.get("autoMerge") === "on",
+      });
+    } catch (error) {
+      if (isGitHubAccessError(error)) {
+        return {
+          status: "error",
+          message: "Publishing is not set up yet. Please contact an administrator.",
+        };
+      }
+
+      return {
+        status: "error",
+        message:
+          "Files were uploaded, but saving the document list draft failed. Please retry to save the list.",
+      };
+    }
 
     return {
       status: "success",

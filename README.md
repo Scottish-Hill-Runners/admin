@@ -82,6 +82,12 @@ The target repository and branch strategy are set with:
 - `CONTENT_BRANCH` — the live/main branch, defaults to `main`
 - `CONTENT_STAGING_BRANCH` — the staging branch, defaults to `staging`
 
+For media uploads to Cloudinary, configure:
+
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
+
 ## Content workflows
 
 All editor saves create a pull request against the **staging** branch, not `main` directly. This separates the day-to-day editing cadence from official approval and site rebuilds.
