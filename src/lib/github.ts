@@ -1610,6 +1610,72 @@ export async function createContentPullRequest({
   };
 }
 
+/**
+ * Like createContentPullRequest, but idempotent across repeated saves:
+ * if an open PR already exists for the given branch, the new content is
+ * committed to that branch and the existing PR number/URL is returned.
+ * This prevents multiple PRs accumulating for the same file when an editor
+ * saves several times before the draft is reviewed.
+ */
+export async function upsertContentPullRequest(input: CreateContentPrInput): Promise<{
+  title: string;
+  path: string;
+  branchName: string;
+  prNumber: number;
+  prUrl: string;
+}> {
+  const client = getGitHubClient();
+  if (!client) {
+    throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+  const baseBranch = await ensureStagingBranch(client, repo);
+
+  // Look for an existing open PR on the deterministic branch name.
+  type PrListItem = { number: number; html_url: string; head: { ref: string } };
+  const response = await client.request("GET /repos/{owner}/{repo}/pulls", {
+    owner: repo.owner,
+    repo: repo.repo,
+    state: "open",
+    base: baseBranch,
+    head: `${repo.owner}:${input.branchName}`,
+    per_page: 5,
+  });
+
+  const existingPr = (response.data as PrListItem[]).find(
+    (pull) => pull.head.ref === input.branchName
+  ) ?? null;
+
+  if (!existingPr) {
+    // No open PR yet — create a fresh branch and PR as normal.
+    return createContentPullRequest(input);
+  }
+
+  // An open PR exists: commit the updated content onto that branch.
+  const normalizedPath = normalizeRepoPath(input.path);
+  const existingSha = await getExistingFileSha(client, repo, normalizedPath, input.branchName);
+
+  await client.repos.createOrUpdateFileContents({
+    owner: repo.owner,
+    repo: repo.repo,
+    path: normalizedPath,
+    branch: input.branchName,
+    message: input.commitMessage,
+    content: toBase64(input.content),
+    sha: existingSha,
+    ...(input.author ? { author: input.author, committer: input.author } : {}),
+  });
+
+  return {
+    title: input.title,
+    path: input.path,
+    branchName: input.branchName,
+    prNumber: existingPr.number,
+    prUrl: existingPr.html_url,
+  };
+}
+
 export async function createContentPullRequestWithFiles({
   title,
   files,

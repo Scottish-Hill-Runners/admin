@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { contentConfig } from "@/lib/content-config";
 import {
-  createContentPullRequest,
+  upsertContentPullRequest,
   isGitHubAccessError,
   listAllClubNameSet,
 } from "@/lib/github";
@@ -130,7 +130,7 @@ export async function saveResultsDraft(
     const raceIdBranchSegment = toBranchSafeSegment(values.raceId) || "race";
     const yearBranchSegment = toBranchSafeSegment(values.year) || "year";
 
-    const result = await createContentPullRequest({
+    const result = await upsertContentPullRequest({
       title: `${values.raceId} ${values.year} results`,
       path: `races/${values.raceId}/${values.year}.csv`,
       content: values.csvText.trimEnd() + "\n",
