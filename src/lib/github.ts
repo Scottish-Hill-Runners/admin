@@ -152,7 +152,7 @@ export function parseRepoSlug(repoSlug: string): { owner: string; repo: string }
 }
 
 function toBase64(input: string): string {
-  return Buffer.from(input, "utf8").toString("base64");
+  return Buffer.from(input.replace(/\r\n/g, "\n").replace(/\r/g, "\n"), "utf8").toString("base64");
 }
 
 function fromBase64(input: string): string {
