@@ -106,6 +106,29 @@ export type RouteGeoJsonResult = {
   pointsAfter: number;
 };
 
+function getLocalName(el: Element): string {
+  if (el.localName) return el.localName.toLowerCase();
+  const tag = el.tagName?.toLowerCase() ?? "";
+  const colonIndex = tag.indexOf(":");
+  return colonIndex >= 0 ? tag.slice(colonIndex + 1) : tag;
+}
+
+function parsePointElements(doc: Document): Element[] {
+  const allElements = doc.getElementsByTagName("*");
+  const trkptElements: Element[] = [];
+  const rteptElements: Element[] = [];
+
+  for (let i = 0; i < allElements.length; i++) {
+    const element = allElements[i];
+    const localName = getLocalName(element);
+    if (localName === "trkpt") trkptElements.push(element);
+    if (localName === "rtept") rteptElements.push(element);
+  }
+
+  // Prefer recorded track points when present; otherwise fall back to route points.
+  return trkptElements.length > 0 ? trkptElements : rteptElements;
+}
+
 function r6(n: number): number {
   return Math.round(n * 1_000_000) / 1_000_000;
 }
@@ -127,7 +150,7 @@ export function gpxToRouteGeoJson(
   type TrkPt = { lat: number; lon: number; ele: number };
 
   const doc = new DOMParser().parseFromString(gpx, "application/xml");
-  const nodeList = doc.getElementsByTagName("trkpt");
+  const nodeList = parsePointElements(doc);
 
   const allTrkpts: TrkPt[] = [];
   for (let i = 0; i < nodeList.length; i++) {

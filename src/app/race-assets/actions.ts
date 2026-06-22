@@ -186,6 +186,14 @@ export async function uploadRaceAssets(
       checkpoints,
     );
 
+    if (pointsBefore === 0) {
+      return {
+        status: "error",
+        message:
+          "No route points were found in that GPX file. Please choose a GPX that contains a recorded route.",
+      };
+    }
+
     gpxSummary = `${pointsBefore.toLocaleString()} → ${pointsAfter.toLocaleString()} track points after ${GPX_EPSILON_M} m smoothing`;
 
     files.push({
