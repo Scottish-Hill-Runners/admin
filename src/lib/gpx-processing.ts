@@ -1,4 +1,8 @@
-import { DOMParser } from "@xmldom/xmldom";
+import {
+  DOMParser,
+  type Document as XmlDocument,
+  type Element as XmlElement,
+} from "@xmldom/xmldom";
 
 // ─── Douglas-Peucker simplification ──────────────────────────────────────────
 
@@ -106,17 +110,17 @@ export type RouteGeoJsonResult = {
   pointsAfter: number;
 };
 
-function getLocalName(el: Element): string {
+function getLocalName(el: XmlElement): string {
   if (el.localName) return el.localName.toLowerCase();
   const tag = el.tagName?.toLowerCase() ?? "";
   const colonIndex = tag.indexOf(":");
   return colonIndex >= 0 ? tag.slice(colonIndex + 1) : tag;
 }
 
-function parsePointElements(doc: Document): Element[] {
+function parsePointElements(doc: XmlDocument): XmlElement[] {
   const allElements = doc.getElementsByTagName("*");
-  const trkptElements: Element[] = [];
-  const rteptElements: Element[] = [];
+  const trkptElements: XmlElement[] = [];
+  const rteptElements: XmlElement[] = [];
 
   for (let i = 0; i < allElements.length; i++) {
     const element = allElements[i];
