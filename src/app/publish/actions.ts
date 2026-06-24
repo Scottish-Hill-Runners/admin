@@ -1,6 +1,6 @@
 "use server";
 
-import { isGitHubAccessError, publishStagingToLive } from "@/lib/github";
+import { getStagingStatus, isGitHubAccessError, publishStagingToLive } from "@/lib/github";
 import { requireEditorAccess } from "@/lib/route-protection";
 import { buildPrAuthor } from "@/lib/auth-session";
 
@@ -20,6 +20,22 @@ export async function publishStagingAction(
 
   const editorSession = await requireEditorAccess();
   const author = buildPrAuthor(editorSession);
+
+  const stagingStatus = await getStagingStatus();
+  if (stagingStatus.state === "error") {
+    return {
+      status: "error",
+      message:
+        "Draft updates need administrator attention before publishing. Please check My submissions and contact an administrator.",
+    };
+  }
+
+  if (stagingStatus.state !== "ahead") {
+    return {
+      status: "error",
+      message: "There are no draft updates ready to publish right now.",
+    };
+  }
 
   try {
     const result = await publishStagingToLive(author ?? undefined);

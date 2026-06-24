@@ -15,6 +15,9 @@ export function PublishForm({ stagingStatus }: PublishFormProps) {
     publishStagingAction,
     initialState
   );
+  const needsDraftWorkspaceRecovery =
+    stagingStatus.state === "error" &&
+    (stagingStatus.message ?? "").includes("Draft updates need attention before publishing");
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -24,7 +27,15 @@ export function PublishForm({ stagingStatus }: PublishFormProps) {
         </p>
 
         {stagingStatus.state === "error" ? (
-          <p className="mt-3 text-sm leading-6 text-red-700">{stagingStatus.message}</p>
+          <div className="mt-3 space-y-2 text-sm leading-6 text-red-700">
+            <p>{stagingStatus.message}</p>
+            {needsDraftWorkspaceRecovery ? (
+              <p>
+                Please open <Link href="/submissions" className="font-semibold underline">My submissions</Link> to
+                review affected requests, then contact an administrator to restore draft updates before trying again.
+              </p>
+            ) : null}
+          </div>
         ) : stagingStatus.state === "up-to-date" ? (
           <p className="mt-3 text-sm leading-6 text-stone-700">
             Draft updates are already in sync with the live site. There is nothing to publish.

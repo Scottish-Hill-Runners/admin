@@ -117,6 +117,7 @@ const MAX_PULL_REQUEST_FILES = 400;
 const MAX_PR_FILE_SCAN_CONCURRENCY = 6;
 const MAX_NEWS_LIST_ITEMS = 24;
 const CACHE_SNAPSHOT_LOG_INTERVAL = 50;
+const ADMIN_DRAFT_BRANCH_PREFIX = "shr-admin/";
 
 let githubRequestCounter = 0;
 
@@ -1115,6 +1116,13 @@ async function ensureStagingBranch(client: Octokit, repo: RepoRef): Promise<stri
     }
   }
 
+  const draftBranchIntegrity = await getDraftBranchIntegrity(client, repo);
+  if (draftBranchIntegrity.liveTargetedDraftCount > 0) {
+    throw new Error(
+      `Draft updates need administrator attention. The draft workspace is missing and ${draftBranchIntegrity.liveTargetedDraftCount} open submission${draftBranchIntegrity.liveTargetedDraftCount === 1 ? " is" : "s are"} still linked to the live site. Please restore draft updates before saving more changes.`
+    );
+  }
+
   // Staging branch does not exist yet — create it from the live branch.
   const liveSha = await getDefaultBranchSha(client, repo, contentConfig.branch);
   await client.git.createRef({
@@ -1125,6 +1133,65 @@ async function ensureStagingBranch(client: Octokit, repo: RepoRef): Promise<stri
   });
 
   return stagingBranch;
+}
+
+type DraftBranchIntegrity = {
+  openDraftCount: number;
+  liveTargetedDraftCount: number;
+};
+
+function withDraftTargetDiagnostics(prBody: string): string {
+  const diagnosticLines = [
+    "",
+    "<!-- shr-admin-draft-target -->",
+    `- Draft target: ${contentConfig.stagingBranch}`,
+    `- Live target: ${contentConfig.branch}`,
+    `- Content store: ${contentConfig.repo}`,
+  ];
+
+  return `${prBody.trimEnd()}\n${diagnosticLines.join("\n")}`;
+}
+
+async function getDraftBranchIntegrity(
+  client: Octokit,
+  repo: RepoRef
+): Promise<DraftBranchIntegrity> {
+  const normalizedRepo = `${repo.owner}/${repo.repo}`.toLowerCase();
+
+  const openPulls = await requestGitHubGet<PullRequestListResponseItem[]>(
+    client,
+    "GET /repos/{owner}/{repo}/pulls",
+    {
+      owner: repo.owner,
+      repo: repo.repo,
+      state: "open",
+      per_page: 100,
+      page: 1,
+    }
+  );
+
+  const adminDraftPulls = openPulls.filter((pull) => {
+    const headRef = pull.head?.ref ?? "";
+    if (!headRef.startsWith(ADMIN_DRAFT_BRANCH_PREFIX)) {
+      return false;
+    }
+
+    const headRepo = pull.head?.repo?.full_name?.toLowerCase();
+    if (!headRepo) {
+      return true;
+    }
+
+    return headRepo === normalizedRepo;
+  });
+
+  const liveTargetedDraftCount = adminDraftPulls.filter(
+    (pull) => pull.base?.ref === contentConfig.branch
+  ).length;
+
+  return {
+    openDraftCount: adminDraftPulls.length,
+    liveTargetedDraftCount,
+  };
 }
 
 async function hasBranch(client: Octokit, repo: RepoRef, branch: string): Promise<boolean> {
@@ -1282,12 +1349,31 @@ export async function getContentStoreHealthReport(): Promise<ContentStoreHealthR
     });
   } catch (error) {
     if (getErrorStatus(error) === 404) {
-      report.checks.stagingBranch = {
-        status: "warning",
-        message:
-          "Draft branch was not found yet. It may be created automatically on first save.",
-        httpStatus: 404,
-      };
+      try {
+        const integrity = await getDraftBranchIntegrity(client, repo);
+        if (integrity.liveTargetedDraftCount > 0) {
+          report.status = "error";
+          report.checks.stagingBranch = {
+            status: "error",
+            message:
+              "Draft updates need attention. The draft workspace is missing while some open submissions are still linked to the live site.",
+            httpStatus: 404,
+          };
+        } else {
+          report.checks.stagingBranch = {
+            status: "warning",
+            message:
+              "Draft workspace was not found yet. It may be created automatically on first save.",
+            httpStatus: 404,
+          };
+        }
+      } catch (integrityError) {
+        report.status = "error";
+        report.checks.stagingBranch = toHealthErrorItem(
+          integrityError,
+          "Could not verify draft workspace integrity while draft updates are missing."
+        );
+      }
     } else {
       report.status = "error";
       report.checks.stagingBranch = toHealthErrorItem(
@@ -1339,6 +1425,15 @@ export async function getStagingStatus(): Promise<StagingStatus> {
   try {
     const stagingExists = await hasBranch(client, repo, contentConfig.stagingBranch);
     if (!stagingExists) {
+      const integrity = await getDraftBranchIntegrity(client, repo);
+      if (integrity.liveTargetedDraftCount > 0) {
+        return {
+          state: "error",
+          message:
+            "Draft updates need attention before publishing. The draft workspace is missing while open submissions are still linked to the live site.",
+        };
+      }
+
       return { state: "up-to-date" };
     }
   } catch {
@@ -1570,9 +1665,11 @@ export async function createContentPullRequest({
     ...(author ? { author, committer: author } : {}),
   });
 
-  const fullPrBody = author
-    ? `${prBody}\n- Editor: ${author.name} <${author.email}>`
-    : prBody;
+  const fullPrBody = withDraftTargetDiagnostics(
+    author
+      ? `${prBody}\n- Editor: ${author.name} <${author.email}>`
+      : prBody
+  );
 
   const pullRequest = await client.pulls.create({
     owner: repo.owner,
@@ -1719,9 +1816,11 @@ export async function createContentPullRequestWithFiles({
     });
   }
 
-  const fullPrBody = author
-    ? `${prBody}\n- Editor: ${author.name} <${author.email}>`
-    : prBody;
+  const fullPrBody = withDraftTargetDiagnostics(
+    author
+      ? `${prBody}\n- Editor: ${author.name} <${author.email}>`
+      : prBody
+  );
 
   const pullRequest = await client.pulls.create({
     owner: repo.owner,
@@ -1949,6 +2048,16 @@ type PullRequestListResponseItem = {
   closed_at: string | null;
   merged_at: string | null;
   body?: string | null;
+  head?: {
+    ref: string;
+    repo?: {
+      full_name?: string | null;
+    } | null;
+  };
+  base?: {
+    ref: string;
+  };
+  state?: "open" | "closed";
 };
 
 type PullRequestDetailResponseItem = PullRequestListResponseItem & {
@@ -1995,6 +2104,7 @@ export type EditorSubmission = {
   status: "open" | "closed" | "approved";
   submitterName: string | null;
   submitterEmail: string | null;
+  requiresAttention: boolean;
 };
 
 export type EditorSubmissionDetail = {
@@ -2056,7 +2166,43 @@ export async function listEditorSubmissions(
     }
   );
 
-  return pulls
+  const liveBasePulls = await requestGitHubGet<PullRequestListResponseItem[]>(
+    client,
+    "GET /repos/{owner}/{repo}/pulls",
+    {
+      owner: repo.owner,
+      repo: repo.repo,
+      state: "all",
+      base: contentConfig.branch,
+      sort: "updated",
+      direction: "desc",
+      per_page: limit,
+      page: 1,
+    }
+  );
+
+  const normalizedRepo = `${repo.owner}/${repo.repo}`.toLowerCase();
+  const abnormalLiveBaseDraftPulls = liveBasePulls.filter((pull) => {
+    const headRef = pull.head?.ref ?? "";
+    if (!headRef.startsWith(ADMIN_DRAFT_BRANCH_PREFIX)) {
+      return false;
+    }
+
+    const headRepo = pull.head?.repo?.full_name?.toLowerCase();
+    if (!headRepo) {
+      return true;
+    }
+
+    return headRepo === normalizedRepo;
+  });
+
+  const combinedPulls = [...pulls, ...abnormalLiveBaseDraftPulls];
+  const uniquePulls = new Map<number, PullRequestListResponseItem>();
+  for (const pull of combinedPulls) {
+    uniquePulls.set(pull.number, pull);
+  }
+
+  return Array.from(uniquePulls.values())
     .map((pr) => {
       const parsedAuthor = parseSubmissionAuthor(pr.body);
       const submitterEmail = parsedAuthor.email?.trim().toLowerCase() ?? null;
@@ -2069,6 +2215,7 @@ export async function listEditorSubmissions(
         status: pr.merged_at ? "approved" : pr.closed_at ? "closed" : "open",
         submitterName: parsedAuthor.name,
         submitterEmail,
+        requiresAttention: pr.base?.ref === contentConfig.branch,
       } satisfies EditorSubmission;
     })
     .filter((pr) => pr.submitterEmail === normalizedEmail);

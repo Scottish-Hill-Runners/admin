@@ -88,6 +88,12 @@ export default async function SubmissionsPage() {
                     </span>
                   </div>
                   <p className="mt-2 text-sm leading-6 text-stone-800">{submission.title}</p>
+                  {submission.requiresAttention ? (
+                    <p className="mt-2 text-sm leading-6 text-amber-800">
+                      This submission needs administrator attention before it can continue through
+                      draft updates.
+                    </p>
+                  ) : null}
                   <p className="mt-2 text-xs uppercase tracking-[0.14em] text-stone-500">
                     Created {formatDate(submission.createdAt)} • Updated {formatDate(submission.updatedAt)}
                   </p>
