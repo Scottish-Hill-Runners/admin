@@ -2385,6 +2385,24 @@ export async function mergePullRequest(pullNumber: number): Promise<{ sha: strin
   }
 
   const repo = parseRepoSlug(contentConfig.repo);
+  const normalizedRepoName = `${repo.owner}/${repo.repo}`.toLowerCase();
+
+  const pullRequest = await client.pulls.get({
+    owner: repo.owner,
+    repo: repo.repo,
+    pull_number: pullNumber,
+  });
+
+  const baseRef = toSafeGitRef(pullRequest.data.base.ref);
+  const headRef = toSafeGitRef(pullRequest.data.head.ref);
+  const headRepoName = pullRequest.data.head.repo?.full_name?.toLowerCase() ?? "";
+
+  const shouldDeleteHeadBranch =
+    baseRef === contentConfig.stagingBranch &&
+    !!headRef &&
+    headRepoName === normalizedRepoName &&
+    headRef !== contentConfig.branch &&
+    headRef !== contentConfig.stagingBranch;
 
   const result = await client.pulls.merge({
     owner: repo.owner,
@@ -2395,6 +2413,24 @@ export async function mergePullRequest(pullNumber: number): Promise<{ sha: strin
 
   if (!result.data.merged) {
     throw new Error("The submission could not be accepted — it may have a conflict or may already be closed.");
+  }
+
+  if (shouldDeleteHeadBranch && headRef) {
+    try {
+      await client.git.deleteRef({
+        owner: repo.owner,
+        repo: repo.repo,
+        ref: `heads/${headRef}`,
+      });
+    } catch (error) {
+      if (getErrorStatus(error) !== 404) {
+        console.warn("Merged PR head branch could not be deleted", {
+          pullNumber,
+          branch: headRef,
+          error,
+        });
+      }
+    }
   }
 
   return { sha: result.data.sha ?? "" };
