@@ -19,7 +19,7 @@ function formatTime(time: string): string {
   return time.replace(/^00:/, "");
 }
 
-function formatWinnerLine(winner: RaceWinner): string {
+function formatWinnerLine(winner: RaceWinner, link: string): string {
   const clubPart = winner.club ? ` (${winner.club})` : "";
   const alsoWon = Array.from(winner.alsoWon).map((category) => category.label).sort();
   const alsoWonPart =
@@ -29,7 +29,7 @@ function formatWinnerLine(winner: RaceWinner): string {
         ? ` (also first ${alsoWon[0]})`
         : ` (also first ${alsoWon.slice(0, -1).join(", ")} and ${alsoWon[alsoWon.length - 1]})`;
 
-  return `- First ${winner.category.label}${alsoWonPart}: [${winner.name}](/runner?name=${encodeURIComponent(winner.name)})${clubPart} - ${formatTime(winner.time)}`;
+  return `- First ${winner.category.label}${alsoWonPart}: [${winner.name}](${link}&category=${encodeURIComponent(winner.category.label)})${clubPart} - ${formatTime(winner.time)}`;
 }
 
 function formatWinnerInline(winner: { name: string; club: string; time: string }) {
@@ -82,7 +82,11 @@ function buildLeadSentence(raceTitle: string, leadDate: string, winners: RaceWin
   const femaleWinner = winners.find((winner) => winner.category.group === "female");
 
   if (maleWinner && femaleWinner) {
-    return `Wins for ${formatWinnerInline(maleWinner)} and ${formatWinnerInline(femaleWinner)} at the ${raceTitle} race on ${leadDate}.`;
+    const { first, second } =
+      maleWinner.position < femaleWinner.position
+      ? { first: maleWinner, second: femaleWinner }
+      : { first: femaleWinner, second: maleWinner };
+    return `Wins for ${formatWinnerInline(first)} and ${formatWinnerInline(second)} at the ${raceTitle} race on ${leadDate}.`;
   }
 
   return `Results are now available for the ${raceTitle} race on ${leadDate}.`;
@@ -101,9 +105,10 @@ export async function buildResultsNewsPrefill({
   const title = `${raceTitle} ${year} results`;
   const excerpt = buildLeadSentence(raceTitle, leadDate, winners);
   const nonBinaryWinner = winners.find((winner) => winner.category.group === "nonBinary");
+  const baseRaceLink = `/races/${encodeURIComponent(raceId)}?year=${encodeURIComponent(year)}`;
 
   const content = [
-    `## [${raceTitle} ${year} results](/races/${encodeURIComponent(raceId)}?year=${encodeURIComponent(year)})`,
+    `## [${raceTitle} ${year} results](${baseRaceLink})`,
     "",
     excerpt,
     nonBinaryWinner
@@ -111,10 +116,10 @@ export async function buildResultsNewsPrefill({
       : "",
     "",
     "### Highlights",
-    ...winners.map(formatWinnerLine),
+    ...winners.map(winner => formatWinnerLine(winner, baseRaceLink)),
     `- ${nEntrants} entrants in total.`,
     "",
-    `Full results can be found [on the race results page](/races/${encodeURIComponent(raceId)}?year=${encodeURIComponent(year)}).`,
+    `Full results can be found [on the race results page](${baseRaceLink}).`,
     "",
     "Congratulations to all runners and thanks to organisers and volunteers.",
   ].join("\n");
