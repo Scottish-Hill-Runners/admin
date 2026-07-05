@@ -895,6 +895,121 @@ export async function listNewsDrafts(): Promise<NewsListItem[]> {
   }
 }
 
+export type PublishNewsCandidate = {
+  slug: string;
+  title: string;
+  date: string;
+  excerpt: string;
+  link?: string;
+};
+
+function extractFirstMarkdownLinkTarget(content: string): string | undefined {
+  const match = content.match(/\[[^\]]+\]\(([^)\s]+)(?:\s+"[^"]*")?\)/);
+  if (!match?.[1]) {
+    return undefined;
+  }
+
+  // Markdown also allows destinations wrapped in angle brackets.
+  const target = match[1].trim();
+  if (!target) {
+    return undefined;
+  }
+
+  return target.replace(/^<|>$/g, "");
+}
+
+function toNewsSlugFromPath(path: string): string | null {
+  const normalizedPath = normalizeRepoPath(path);
+  const match = normalizedPath.match(
+    /^news\/(\d{4})\/(\d{4}-\d{2}-\d{2}(?:-[a-z0-9-]+)?)\.md$/
+  );
+  if (!match) {
+    return null;
+  }
+
+  return `${match[1]}/${match[2]}`;
+}
+
+export async function listPublishNewsCandidates(): Promise<PublishNewsCandidate[]> {
+  const client = getGitHubClient();
+  if (!client) {
+    return [];
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+
+  type CompareFileItem = {
+    filename: string;
+    previous_filename?: string;
+    status: "added" | "modified" | "removed" | "renamed";
+  };
+
+  type CompareResponse = {
+    files?: CompareFileItem[];
+  };
+
+  let comparison: CompareResponse;
+  try {
+    comparison = await requestGitHubGet<CompareResponse>(
+      client,
+      "GET /repos/{owner}/{repo}/compare/{base}...{head}",
+      {
+        owner: repo.owner,
+        repo: repo.repo,
+        base: contentConfig.branch,
+        head: contentConfig.stagingBranch,
+      }
+    );
+  } catch {
+    return [];
+  }
+
+  const slugs = new Set<string>();
+  for (const file of comparison.files ?? []) {
+    if (file.status === "removed") {
+      continue;
+    }
+
+    const currentSlug = toNewsSlugFromPath(file.filename);
+    if (currentSlug) {
+      slugs.add(currentSlug);
+    }
+  }
+
+  const sortedSlugs = Array.from(slugs).sort((left, right) => right.localeCompare(left));
+  const drafts = await mapWithConcurrency(sortedSlugs, 4, async (slug) => {
+    const draft = await getNewsDraft(slug, { ref: contentConfig.stagingBranch });
+    if (!draft) {
+      return null;
+    }
+
+    const link = extractFirstMarkdownLinkTarget(draft.content);
+    const candidate: PublishNewsCandidate = {
+      slug,
+      title: draft.data.title,
+      date: draft.data.date,
+      excerpt: draft.data.excerpt,
+    };
+
+    if (link) {
+      candidate.link = link;
+    }
+
+    return candidate;
+  });
+
+  return drafts
+    .filter((item): item is PublishNewsCandidate => item !== null)
+    .sort((left, right) => {
+      const dateOrder = right.date.localeCompare(left.date);
+      if (dateOrder !== 0) {
+        return dateOrder;
+      }
+
+      return right.slug.localeCompare(left.slug);
+    });
+}
+
 export async function listRaceDrafts(): Promise<RaceListItem[]> {
   try {
     const entries = await getRepositoryDirectory("races");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import {
   acceptSubmissionAction,
   publishLiveAction,
@@ -9,6 +9,7 @@ import {
 } from "@/app/publish/manage/actions";
 import type { StagingPullRequest } from "@/lib/github";
 import type { StagingStatus } from "@/lib/github";
+import type { PublishNewsCandidate } from "@/lib/news-social";
 
 const idle: ManageActionState = { status: "idle" };
 
@@ -106,13 +107,43 @@ function AcceptSubmissionForm({ pr }: { pr: StagingPullRequest }) {
   );
 }
 
-function PublishLiveForm({ stagingStatus }: { stagingStatus: StagingStatus }) {
+function PublishLiveForm({
+  stagingStatus,
+  socialCandidates,
+  socialPostingAvailable,
+}: {
+  stagingStatus: StagingStatus;
+  socialCandidates: PublishNewsCandidate[];
+  socialPostingAvailable: boolean;
+}) {
   const [state, formAction, isPending] = useActionState<ManageActionState, FormData>(
     publishLiveAction,
     idle
   );
+  const [facebookPostingEnabled, setFacebookPostingEnabled] = useState(false);
+  const [selectedSlugs, setSelectedSlugs] = useState<Record<string, boolean>>({});
 
   const canPublish = stagingStatus.state === "ahead" && state.status !== "success";
+  const canUseFacebookPosting =
+    canPublish && socialPostingAvailable && socialCandidates.length > 0 && !isPending;
+  const selectedCount = useMemo(
+    () => Object.values(selectedSlugs).filter(Boolean).length,
+    [selectedSlugs]
+  );
+
+  function handleFacebookPostingEnabledChange(nextValue: boolean) {
+    setFacebookPostingEnabled(nextValue);
+    if (!nextValue) {
+      setSelectedSlugs({});
+    }
+  }
+
+  function handleSlugSelection(slug: string, selected: boolean) {
+    setSelectedSlugs((current) => ({
+      ...current,
+      [slug]: selected,
+    }));
+  }
 
   return (
     <section className="rounded-[1.5rem] border border-stone-900/10 bg-[#172119] p-6 text-stone-50 shadow-[0_22px_55px_rgba(23,33,25,0.24)]">
@@ -144,18 +175,98 @@ function PublishLiveForm({ stagingStatus }: { stagingStatus: StagingStatus }) {
       </div>
 
       {state.status !== "idle" ? (
-        <p
-          className={`mt-3 text-sm ${state.status === "success" ? "text-lime-300" : "text-red-400"}`}
-        >
-          {state.message}
-        </p>
+        <div className="mt-3 space-y-2">
+          <p
+            className={`text-sm ${state.status === "success" ? "text-lime-300" : "text-red-400"}`}
+          >
+            {state.message}
+          </p>
+          {state.socialResult?.failedItems.length ? (
+            <ul className="space-y-1 text-xs text-red-200">
+              {state.socialResult.failedItems.map((item) => (
+                <li key={item.slug}>
+                  {item.title}: {item.reason}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
       ) : null}
 
       <form action={formAction} className="mt-5">
+        <div className="space-y-3 rounded-xl border border-lime-100/20 bg-black/10 p-4">
+          <label className="flex items-start gap-3 text-sm text-stone-200">
+            <input
+              type="checkbox"
+              name="facebookPostEnabled"
+              className="mt-1 size-4 rounded"
+              checked={facebookPostingEnabled}
+              onChange={(event) => handleFacebookPostingEnabledChange(event.target.checked)}
+              disabled={!canUseFacebookPosting}
+            />
+            <span>
+              Post selected news updates to Facebook after publishing live.
+            </span>
+          </label>
+
+          {!socialPostingAvailable ? (
+            <p className="text-xs text-stone-400">
+              Facebook posting is not set up yet. Please contact an administrator.
+            </p>
+          ) : socialCandidates.length === 0 ? (
+            <p className="text-xs text-stone-400">
+              No news updates are included in this publish batch.
+            </p>
+          ) : facebookPostingEnabled ? (
+            <div className="space-y-3">
+              <p className="text-xs text-lime-200/90">
+                Choose the news updates to post and edit the text before publishing.
+              </p>
+              {socialCandidates.map((candidate) => {
+                const isSelected = Boolean(selectedSlugs[candidate.slug]);
+                return (
+                  <div
+                    key={candidate.slug}
+                    className="space-y-2 rounded-lg border border-lime-100/15 bg-black/20 p-3"
+                  >
+                    <label className="flex items-start gap-3 text-sm text-stone-100">
+                      <input
+                        type="checkbox"
+                        name="facebookSelectedSlugs"
+                        value={candidate.slug}
+                        className="mt-1 size-4 rounded"
+                        checked={isSelected}
+                        onChange={(event) =>
+                          handleSlugSelection(candidate.slug, event.target.checked)
+                        }
+                        disabled={!facebookPostingEnabled || isPending}
+                      />
+                      <span className="flex flex-col">
+                        <span className="font-semibold text-white">{candidate.title}</span>
+                        <span className="text-xs text-stone-300">{candidate.date}</span>
+                      </span>
+                    </label>
+                    <textarea
+                      name={`facebookPostText:${candidate.slug}`}
+                      defaultValue={candidate.excerpt}
+                      rows={4}
+                      disabled={!isSelected || isPending}
+                      className="w-full rounded-md border border-lime-100/25 bg-black/30 px-3 py-2 text-sm text-stone-100 placeholder:text-stone-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                  </div>
+                );
+              })}
+              <p className="text-xs text-stone-300">
+                {selectedCount} news update{selectedCount === 1 ? "" : "s"} selected.
+              </p>
+            </div>
+          ) : null}
+        </div>
+
         <button
           type="submit"
           disabled={!canPublish || isPending}
-          className="rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500 disabled:text-stone-300"
+          className="mt-4 rounded-full bg-lime-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-stone-500 disabled:text-stone-300"
         >
           {isPending ? "Publishing…" : "Publish live now"}
         </button>
@@ -167,9 +278,13 @@ function PublishLiveForm({ stagingStatus }: { stagingStatus: StagingStatus }) {
 export function PublishManageForm({
   pendingSubmissions,
   stagingStatus,
+  socialCandidates,
+  socialPostingAvailable,
 }: {
   pendingSubmissions: StagingPullRequest[];
   stagingStatus: StagingStatus;
+  socialCandidates: PublishNewsCandidate[];
+  socialPostingAvailable: boolean;
 }) {
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -189,7 +304,11 @@ export function PublishManageForm({
         )}
       </section>
 
-      <PublishLiveForm stagingStatus={stagingStatus} />
+      <PublishLiveForm
+        stagingStatus={stagingStatus}
+        socialCandidates={socialCandidates}
+        socialPostingAvailable={socialPostingAvailable}
+      />
     </div>
   );
 }
