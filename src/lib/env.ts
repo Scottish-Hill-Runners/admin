@@ -42,6 +42,9 @@ const envSchema = z
   GITHUB_APP_ID: optStr,
   GITHUB_APP_PRIVATE_KEY: optStr,
   GITHUB_APP_INSTALLATION_ID: optStr,
+  FACEBOOK_PAGE_ID: optStr,
+  FACEBOOK_PAGE_ACCESS_TOKEN: optStr,
+  PUBLIC_SITE_BASE_URL: z.preprocess((v) => (v === "" ? undefined : v), z.url().optional()),
   GITHUB_DEBUG_PERF: boolWithDefaultFalse,
   PUBLISHER_EMAILS: optStr,
   })
@@ -52,6 +55,29 @@ const envSchema = z
         path: ["CONTENT_STAGING_BRANCH"],
         message:
           "CONTENT_STAGING_BRANCH must be different from CONTENT_BRANCH to keep draft submissions off the live branch.",
+      });
+    }
+
+    const hasAnyFacebookConfig =
+      Boolean(value.FACEBOOK_PAGE_ID) || Boolean(value.FACEBOOK_PAGE_ACCESS_TOKEN);
+    const hasAllFacebookConfig =
+      Boolean(value.FACEBOOK_PAGE_ID) && Boolean(value.FACEBOOK_PAGE_ACCESS_TOKEN);
+
+    if (hasAnyFacebookConfig && !hasAllFacebookConfig) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["FACEBOOK_PAGE_ACCESS_TOKEN"],
+        message:
+          "FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN must both be set when Facebook posting is enabled.",
+      });
+    }
+
+    if (hasAllFacebookConfig && !value.PUBLIC_SITE_BASE_URL) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["PUBLIC_SITE_BASE_URL"],
+        message:
+          "PUBLIC_SITE_BASE_URL must be set when Facebook posting is enabled so links can use full live URLs.",
       });
     }
   });
@@ -78,6 +104,9 @@ export const env = envSchema.parse({
   GITHUB_APP_ID: process.env.GITHUB_APP_ID,
   GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,
   GITHUB_APP_INSTALLATION_ID: process.env.GITHUB_APP_INSTALLATION_ID,
+  FACEBOOK_PAGE_ID: process.env.FACEBOOK_PAGE_ID,
+  FACEBOOK_PAGE_ACCESS_TOKEN: process.env.FACEBOOK_PAGE_ACCESS_TOKEN,
+  PUBLIC_SITE_BASE_URL: process.env.PUBLIC_SITE_BASE_URL,
   GITHUB_DEBUG_PERF: process.env.GITHUB_DEBUG_PERF,
   PUBLISHER_EMAILS: process.env.PUBLISHER_EMAILS,
 });
