@@ -47,6 +47,13 @@ const envSchema = z
   PUBLIC_SITE_BASE_URL: z.preprocess((v) => (v === "" ? undefined : v), z.url().optional()),
   GITHUB_DEBUG_PERF: boolWithDefaultFalse,
   PUBLISHER_EMAILS: optStr,
+  RESULTS_INBOX_RESEND_WEBHOOK_SECRET: optStr,
+  RESULTS_INBOX_CRON_SECRET: optStr,
+  RESULTS_INBOX_CALENDAR_URL: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z.url().default("https://beta.scottishhillrunners.uk/calendar.json.gz")
+  ),
+  RESULTS_INBOX_STATE_PATH: z.string().min(1).default("_admin/results-inbox.json"),
   })
   .superRefine((value, ctx) => {
     if (value.CONTENT_BRANCH === value.CONTENT_STAGING_BRANCH) {
@@ -109,4 +116,9 @@ export const env = envSchema.parse({
   PUBLIC_SITE_BASE_URL: process.env.PUBLIC_SITE_BASE_URL,
   GITHUB_DEBUG_PERF: process.env.GITHUB_DEBUG_PERF,
   PUBLISHER_EMAILS: process.env.PUBLISHER_EMAILS,
+  RESULTS_INBOX_WEBHOOK_SECRET: process.env.RESULTS_INBOX_WEBHOOK_SECRET,
+  RESULTS_INBOX_RESEND_WEBHOOK_SECRET: process.env.RESULTS_INBOX_RESEND_WEBHOOK_SECRET,
+  RESULTS_INBOX_CRON_SECRET: process.env.RESULTS_INBOX_CRON_SECRET,
+  RESULTS_INBOX_CALENDAR_URL: process.env.RESULTS_INBOX_CALENDAR_URL,
+  RESULTS_INBOX_STATE_PATH: process.env.RESULTS_INBOX_STATE_PATH,
 });

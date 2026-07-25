@@ -76,6 +76,14 @@ export async function EditorialShell({
               </Link>
               {publisherAccess ? (
                 <Link
+                  href="/results-inbox"
+                  className="rounded-full border border-sky-700/30 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
+                >
+                  Results inbox
+                </Link>
+              ) : null}
+              {publisherAccess ? (
+                <Link
                   href="/publish/manage"
                   className="rounded-full border border-lime-700/30 bg-lime-50 px-4 py-2 text-sm font-medium text-lime-800 transition hover:bg-lime-100"
                 >

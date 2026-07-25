@@ -629,6 +629,36 @@ export async function getContentFileAtRef(
   return getRepositoryFile(path, { ref });
 }
 
+export async function upsertContentFileAtRef(input: {
+  path: string;
+  content: string;
+  ref: string;
+  commitMessage: string;
+  author?: ContentPrAuthor;
+}): Promise<void> {
+  const client = getGitHubClient();
+  if (!client) {
+    throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+  const normalizedPath = normalizeRepoPath(input.path);
+  const existingSha = await getExistingFileSha(client, repo, normalizedPath, input.ref);
+
+  console.log(`Upserting file at ${normalizedPath} on ref ${input.ref} (existing SHA: ${existingSha ?? "none"})`);
+
+  await client.repos.createOrUpdateFileContents({
+    owner: repo.owner,
+    repo: repo.repo,
+    path: normalizedPath,
+    branch: input.ref,
+    message: input.commitMessage,
+    content: toBase64(input.content),
+    sha: existingSha,
+    ...(input.author ? { author: input.author, committer: input.author } : {}),
+  });
+}
+
 async function getRepositoryDirectory(path: string): Promise<RepositoryDirectoryEntry[]>;
 async function getRepositoryDirectory(path: string, options: { nullOn404: true }): Promise<RepositoryDirectoryEntry[] | null>;
 async function getRepositoryDirectory(path: string, options?: { nullOn404?: boolean }): Promise<RepositoryDirectoryEntry[] | null> {

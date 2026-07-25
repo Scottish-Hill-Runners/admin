@@ -7,6 +7,50 @@ const CATEGORY_KEYS = ["RunnerCategory", "Category", "Cat"];
 const TIME_KEYS = ["FinishTime", "Time"];
 const RUNNER_CATEGORY_PATTERN = /^(M|F|A|NB?)\d{0,2}$/;
 
+const HEADER_ALIAS_GROUPS = [
+  {
+    canonical: "RunnerPosition",
+    aliases: [
+      "RunnerPosition",
+      "FinishPosition",
+      "Position",
+      "Pos",
+      "Place",
+      "Rank",
+    ],
+  },
+  {
+    canonical: "Name",
+    aliases: ["Name", "Runner", "RunnerName", "Athlete"],
+  },
+  {
+    canonical: "Firstname",
+    aliases: ["Firstname", "FirstName", "First Name", "GivenName", "Given Name"],
+  },
+  {
+    canonical: "Surname",
+    aliases: ["Surname", "LastName", "Last Name", "FamilyName", "Family Name"],
+  },
+  {
+    canonical: "Club",
+    aliases: ["Club", "Team"],
+  },
+  {
+    canonical: "RunnerCategory",
+    aliases: ["RunnerCategory", "Category", "Cat", "Class"],
+  },
+  {
+    canonical: "FinishTime",
+    aliases: ["FinishTime", "Time", "NetTime", "GunTime"],
+  },
+] as const;
+
+const HEADER_ALIAS_LOOKUP = new Map<string, string>(
+  HEADER_ALIAS_GROUPS.flatMap((group) =>
+    group.aliases.map((alias) => [normalizeHeaderToken(alias), group.canonical] as const)
+  )
+);
+
 export type CsvIssue = {
   row: number | null;
   level: "error" | "warning" | "note";
@@ -66,6 +110,53 @@ export function splitCsvLine(line: string): string[] {
   return values;
 }
 
+function serializeCsvLine(values: string[]): string {
+  return values
+    .map((value) => {
+      if (/[",\n]/.test(value)) {
+        return `"${value.replace(/"/g, '""')}"`;
+      }
+
+      return value;
+    })
+    .join(",");
+}
+
+function normalizeHeaderToken(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+export function normalizeRaceResultsHeader(header: string): string {
+  const normalizedToken = normalizeHeaderToken(header);
+  return HEADER_ALIAS_LOOKUP.get(normalizedToken) ?? header.trim();
+}
+
+export function normalizeRaceResultsHeaders(headers: string[]): string[] {
+  return headers.map((header) => normalizeRaceResultsHeader(header));
+}
+
+export function countRecognizedRaceResultsHeaders(headers: string[]): number {
+  return headers.reduce((count, header) => {
+    const normalizedToken = normalizeHeaderToken(header);
+    return HEADER_ALIAS_LOOKUP.has(normalizedToken) ? count + 1 : count;
+  }, 0);
+}
+
+export function normalizeRaceResultsCsvHeaders(csvText: string): string {
+  const normalizedLines = csvText.replace(/\r\n?/g, "\n").split("\n");
+  const headerLineIndex = normalizedLines.findIndex((line) => line.trim().length > 0);
+
+  if (headerLineIndex < 0) {
+    return csvText;
+  }
+
+  const rawHeaders = splitCsvLine(normalizedLines[headerLineIndex]);
+  const canonicalHeaders = normalizeRaceResultsHeaders(rawHeaders);
+  normalizedLines[headerLineIndex] = serializeCsvLine(canonicalHeaders);
+
+  return normalizedLines.join("\n");
+}
+
 function parseCsv(csvText: string) {
   const lines = csvText
     .split(/\r?\n/)
@@ -76,7 +167,7 @@ function parseCsv(csvText: string) {
     return { headers: [] as string[], rows: [] as Record<string, string>[] };
   }
 
-  const headers = splitCsvLine(lines[0]);
+  const headers = normalizeRaceResultsHeaders(splitCsvLine(lines[0]));
   const rows = lines.slice(1).map((line) => {
     const values = splitCsvLine(line);
     return headers.reduce<Record<string, string>>((record, header, index) => {
