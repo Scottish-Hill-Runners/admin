@@ -10,6 +10,8 @@ import {
 
 const MAX_QUEUE_ITEMS = 800;
 const CALENDAR_CACHE_TTL_MS = 10 * 60 * 1000;
+const CALENDAR_RATE_LIMIT_RETRY_MS = 15 * 60 * 1000;
+const CALENDAR_ERROR_RETRY_MS = 2 * 60 * 1000;
 
 const STOP_WORDS = new Set([
   "a",
@@ -54,7 +56,14 @@ type CalendarCacheEntry = {
   races: CalendarRaceEntry[];
 };
 
+type CalendarLookupState = {
+  nextRetryAt: number;
+  lastErrorMessage: string;
+  lastLoggedAt: number;
+};
+
 let calendarRaceCache: CalendarCacheEntry | null = null;
+let calendarLookupState: CalendarLookupState | null = null;
 
 type ResultsInboxStatus =
   | "queued"
@@ -154,7 +163,7 @@ const resultsInboxStoreSchema = z.object({
 const calendarRaceSchema = z.object({
   Date: z.string().min(1),
   raceName: z.string().min(1),
-  raceId: z.string().min(1),
+  raceId: z.string().optional(),
 });
 
 const calendarRaceListSchema = z.array(calendarRaceSchema);
@@ -236,16 +245,40 @@ async function loadCalendarRaceEntries(): Promise<CalendarRaceEntry[]> {
     return calendarRaceCache.races;
   }
 
+  if (calendarLookupState && now < calendarLookupState.nextRetryAt) {
+    if (calendarRaceCache) {
+      return calendarRaceCache.races;
+    }
+
+    throw new Error(calendarLookupState.lastErrorMessage);
+  }
+
   const response = await fetch(env.RESULTS_INBOX_CALENDAR_URL, {
     method: "GET",
     headers: {
       Accept: "application/json,application/gzip;q=0.9,*/*;q=0.8",
+      ...(env.VERCEL_AUTOMATION_BYPASS_SECRET
+        ? { "x-vercel-protection-bypass": env.VERCEL_AUTOMATION_BYPASS_SECRET }
+        : {}),
     },
     cache: "no-store",
   });
 
   if (!response.ok) {
-    throw new Error(`Calendar lookup failed with status ${response.status}.`);
+    const retryDelayMs = response.status === 429 ? CALENDAR_RATE_LIMIT_RETRY_MS : CALENDAR_ERROR_RETRY_MS;
+    const message = `Calendar lookup failed with status ${response.status}`;
+
+    calendarLookupState = {
+      nextRetryAt: now + retryDelayMs,
+      lastErrorMessage: message,
+      lastLoggedAt: 0,
+    };
+
+    if (calendarRaceCache) {
+      return calendarRaceCache.races;
+    }
+
+    throw new Error(message);
   }
 
   const rawBuffer = Buffer.from(await response.arrayBuffer());
@@ -262,7 +295,7 @@ async function loadCalendarRaceEntries(): Promise<CalendarRaceEntry[]> {
 
   const races = parsedCalendar
     .map((entry) => {
-      const raceId = entry.raceId.trim();
+      const raceId = entry.raceId?.trim() ?? entry.raceName.trim();
       const raceName = entry.raceName.trim();
       const date = entry.Date.trim();
       const raceIdTokens = splitMessageTokens(raceId);
@@ -288,6 +321,8 @@ async function loadCalendarRaceEntries(): Promise<CalendarRaceEntry[]> {
     cachedAt: now,
     races,
   };
+
+  calendarLookupState = null;
 
   return races;
 }
@@ -324,7 +359,23 @@ async function inferRaceIdFromCalendar(input: {
     races = await loadCalendarRaceEntries();
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown calendar lookup error.";
-    console.warn("Results inbox race matching fallback:", message);
+    const now = Date.now();
+    const shouldLog =
+      !calendarLookupState ||
+      calendarLookupState.lastErrorMessage !== message ||
+      now - calendarLookupState.lastLoggedAt >= 60_000;
+
+    if (shouldLog) {
+      console.warn("Results inbox race matching fallback:", message);
+
+      if (calendarLookupState) {
+        calendarLookupState = {
+          ...calendarLookupState,
+          lastLoggedAt: now,
+        };
+      }
+    }
+
     return {
       confidence: "none",
       source: "none",
