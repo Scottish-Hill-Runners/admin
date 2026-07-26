@@ -4,11 +4,14 @@ import { z } from "zod";
 import { buildPrAuthor } from "@/lib/auth-session";
 import { contentConfig } from "@/lib/content-config";
 import {
+  getRaceResultsDraft,
   isGitHubAccessError,
   listAllClubNameSet,
   upsertContentPullRequest,
 } from "@/lib/github";
 import {
+  applyMinorCorrectionToCsv,
+  getResultsInboxCandidateKind,
   getResultsInboxCandidate,
   markResultsInboxCandidateDraftCreated,
   markResultsInboxCandidateError,
@@ -74,6 +77,13 @@ export async function createResultsInboxDraftAction(
     return {
       status: "error",
       message: "This queued item no longer exists.",
+    };
+  }
+
+  if (getResultsInboxCandidateKind(candidate) !== "results-upload" || !candidate.csvText) {
+    return {
+      status: "error",
+      message: "This queued item is not a results file upload.",
     };
   }
 
@@ -153,6 +163,161 @@ export async function createResultsInboxDraftAction(
         : error instanceof Error
           ? error.message
           : "Failed to create this draft from the queue.";
+
+    await markResultsInboxCandidateError(values.candidateId, message);
+
+    return {
+      status: "error",
+      message,
+    };
+  }
+}
+
+export async function createResultsInboxCorrectionDraftAction(
+  _previousState: ResultsInboxActionState,
+  formData: FormData
+): Promise<ResultsInboxActionState> {
+  const session = await requirePublisherAccess();
+  const author = buildPrAuthor(session);
+
+  const parsed = createResultsInboxDraftSchema.safeParse({
+    candidateId: formData.get("candidateId"),
+    raceId: formData.get("raceId"),
+    year: formData.get("year"),
+  });
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Please fix the highlighted fields before continuing.",
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
+    };
+  }
+
+  const values = parsed.data;
+  const candidate = await getResultsInboxCandidate(values.candidateId);
+  if (!candidate) {
+    return {
+      status: "error",
+      message: "This queued item no longer exists.",
+    };
+  }
+
+  if (candidate.status === "draft-created") {
+    return {
+      status: "success",
+      message: candidate.submissionUrl
+        ? `Draft already created: ${candidate.submissionUrl}`
+        : "Draft already created for this queued item.",
+    };
+  }
+
+  if (
+    getResultsInboxCandidateKind(candidate) !== "minor-correction" ||
+    !candidate.correctionRequest
+  ) {
+    return {
+      status: "error",
+      message: "This queued item is not a correction email.",
+    };
+  }
+
+  const effectiveCorrection = {
+    ...candidate.correctionRequest,
+    raceId: values.raceId,
+    year: values.year,
+  };
+
+  const existingDraft =
+    (await getRaceResultsDraft(values.raceId, values.year, {
+      ref: contentConfig.stagingBranch,
+    })) ?? (await getRaceResultsDraft(values.raceId, values.year));
+
+  if (!existingDraft) {
+    const message = "No results file was found for this race and year.";
+    await markResultsInboxCandidateError(values.candidateId, message);
+    return {
+      status: "error",
+      message,
+    };
+  }
+
+  const applied = applyMinorCorrectionToCsv(existingDraft.csvText, effectiveCorrection);
+  if (applied.status !== "matched") {
+    await markResultsInboxCandidateError(values.candidateId, applied.message);
+    return {
+      status: "error",
+      message: applied.message,
+    };
+  }
+
+  const knownClubNames = await listAllClubNameSet();
+  const issues = validateRaceResultsCsv(applied.csvText, { knownClubNames });
+  const blockingIssues = issues.filter((issue) => issue.level === "error");
+  if (blockingIssues.length > 0) {
+    const issueMessage = blockingIssues
+      .slice(0, 3)
+      .map((issue) => (issue.row ? `row ${issue.row}: ${issue.message}` : issue.message))
+      .join("; ");
+
+    await markResultsInboxCandidateError(values.candidateId, issueMessage);
+    return {
+      status: "error",
+      message: "The corrected CSV failed checks and was not saved as a draft.",
+    };
+  }
+
+  const warnings = issues.filter((issue) => issue.level === "warning");
+  const warningsSection =
+    warnings.length === 0
+      ? "No validation warnings."
+      : [
+          `### Validation warnings (${warnings.length})`,
+          ...warnings.map((issue) =>
+            issue.row ? `- Row ${issue.row}: ${issue.message}` : `- ${issue.message}`
+          ),
+        ].join("\n");
+
+  const raceIdBranchSegment = toBranchSafeSegment(values.raceId) || "race";
+  const yearBranchSegment = toBranchSafeSegment(values.year) || "year";
+
+  try {
+    const result = await upsertContentPullRequest({
+      title: `${values.raceId} ${values.year} results correction`,
+      path: `races/${values.raceId}/${values.year}.csv`,
+      content: applied.csvText,
+      commitMessage: `Apply results correction: ${values.raceId} ${values.year}`,
+      prTitle: `Results correction: ${values.raceId} ${values.year}`,
+      prBody:
+        `Applied from the results inbox correction queue by ${session.email ?? "an administrator"}.\n\n` +
+        `- Content repo: ${contentConfig.repo}\n` +
+        `- Path: races/${values.raceId}/${values.year}.csv\n` +
+        `- Source sender: ${candidate.sender}\n` +
+        `- Source subject: ${candidate.subject}\n` +
+        `- Applied change: ${applied.summary}\n` +
+        `- Matched row: ${applied.matchedRow.rowNumber}\n\n` +
+        warningsSection,
+      branchName: `shr-admin/results-correction-${raceIdBranchSegment}-${yearBranchSegment}`,
+      author,
+    });
+
+    await markResultsInboxCandidateDraftCreated({
+      id: values.candidateId,
+      submissionNumber: result.prNumber,
+      submissionUrl: result.prUrl,
+    });
+
+    return {
+      status: "success",
+      message: `Saved draft #${result.prNumber}: ${result.prUrl}`,
+    };
+  } catch (error) {
+    const message =
+      isGitHubAccessError(error)
+        ? "Publishing is not set up yet. Please contact an administrator."
+        : error instanceof Error
+          ? error.message
+          : "Failed to create this correction draft from the queue.";
 
     await markResultsInboxCandidateError(values.candidateId, message);
 

@@ -2,11 +2,15 @@
 
 import { useActionState } from "react";
 import {
+  createResultsInboxCorrectionDraftAction,
   createResultsInboxDraftAction,
   rejectResultsInboxCandidateAction,
   type ResultsInboxActionState,
 } from "@/app/results-inbox/actions";
-import type { ResultsInboxCandidate } from "@/lib/results-inbox";
+import {
+  getResultsInboxCandidateKind,
+  type ResultsInboxCandidate,
+} from "@/lib/results-inbox";
 
 const idleState: ResultsInboxActionState = { status: "idle" };
 
@@ -47,17 +51,38 @@ export function ResultsInboxReviewCard({
 }: {
   candidate: ResultsInboxCandidate;
 }) {
-  const [createState, createAction, isCreatePending] = useActionState<
+  const kind = getResultsInboxCandidateKind(candidate);
+  const [uploadCreateState, uploadCreateAction, isUploadCreatePending] = useActionState<
     ResultsInboxActionState,
     FormData
   >(createResultsInboxDraftAction, idleState);
+  const [correctionCreateState, correctionCreateAction, isCorrectionCreatePending] = useActionState<
+    ResultsInboxActionState,
+    FormData
+  >(createResultsInboxCorrectionDraftAction, idleState);
   const [rejectState, rejectAction, isRejectPending] = useActionState<
     ResultsInboxActionState,
     FormData
   >(rejectResultsInboxCandidateAction, idleState);
 
+  const createState = kind === "minor-correction" ? correctionCreateState : uploadCreateState;
+  const createAction = kind === "minor-correction" ? correctionCreateAction : uploadCreateAction;
+  const isCreatePending =
+    kind === "minor-correction" ? isCorrectionCreatePending : isUploadCreatePending;
   const isPending = isCreatePending || isRejectPending;
-  const currentState = createState.status !== "idle" ? createState : rejectState;
+  const currentState =
+    createState.status !== "idle"
+      ? createState
+      : rejectState;
+  const correctionRequest = candidate.correctionRequest;
+  const createButtonLabel =
+    kind === "minor-correction"
+      ? isCreatePending
+        ? "Creating correction draft..."
+        : "Create correction draft"
+      : isCreatePending
+        ? "Creating draft..."
+        : "Create draft";
 
   return (
     <article className="rounded-2xl border border-stone-900/10 bg-stone-50/90 p-5">
@@ -73,7 +98,11 @@ export function ResultsInboxReviewCard({
           </p>
           <p className="mt-1 text-xs text-stone-600">
             Source file: {candidate.fileName}
-            {candidate.sourceType === "xlsx" ? " (XLSX converted to CSV)" : " (CSV)"}
+            {kind === "minor-correction"
+              ? " (correction email)"
+              : candidate.sourceType === "xlsx"
+                ? " (XLSX converted to CSV)"
+                : " (CSV)"}
             {candidate.selectedWorksheet ? `, sheet: ${candidate.selectedWorksheet}` : ""}
           </p>
         </div>
@@ -129,9 +158,46 @@ export function ResultsInboxReviewCard({
               disabled={isPending || candidate.status === "draft-created"}
               className="rounded-full bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-400"
             >
-              {isCreatePending ? "Creating draft..." : "Create draft"}
+              {createButtonLabel}
             </button>
           </div>
+
+          {kind === "minor-correction" && correctionRequest ? (
+            <div className="sm:col-span-2 rounded-lg border border-stone-300 bg-white p-3 text-xs text-stone-700">
+              <p className="font-semibold uppercase tracking-[0.12em] text-stone-500">
+                Requested correction
+              </p>
+              <p className="mt-2 text-stone-700">
+                {correctionRequest.changes.map((change) => `${change.field} -> ${change.value}`).join(", ")}
+              </p>
+              <dl className="mt-3 grid gap-1 sm:grid-cols-2">
+                {correctionRequest.runnerName ? (
+                  <div>
+                    <dt className="font-semibold text-stone-500">Runner</dt>
+                    <dd>{correctionRequest.runnerName}</dd>
+                  </div>
+                ) : null}
+                {correctionRequest.runnerPosition ? (
+                  <div>
+                    <dt className="font-semibold text-stone-500">Position</dt>
+                    <dd>{correctionRequest.runnerPosition}</dd>
+                  </div>
+                ) : null}
+                {correctionRequest.runnerCategory ? (
+                  <div>
+                    <dt className="font-semibold text-stone-500">Category</dt>
+                    <dd>{correctionRequest.runnerCategory}</dd>
+                  </div>
+                ) : null}
+                {correctionRequest.runnerClub ? (
+                  <div>
+                    <dt className="font-semibold text-stone-500">Club</dt>
+                    <dd>{correctionRequest.runnerClub}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
+          ) : null}
 
           {candidate.raceMatchCandidates && candidate.raceMatchCandidates.length > 0 ? (
             <div className="sm:col-span-2 rounded-lg border border-stone-300 bg-white p-3 text-xs text-stone-700">
@@ -183,42 +249,44 @@ export function ResultsInboxReviewCard({
         <p className="mt-2 text-sm text-red-700">{candidate.errorMessage}</p>
       ) : null}
 
-      <details className="mt-4 rounded-lg border border-stone-300 bg-white/70 p-3">
-        <summary className="cursor-pointer text-sm font-semibold text-stone-800">
-          Preview CSV ({candidate.fileName})
-        </summary>
-        {candidate.worksheetScores && candidate.worksheetScores.length > 0 ? (
-          <div className="mt-3 overflow-x-auto">
-            <table className="min-w-full text-left text-xs text-stone-700">
-              <thead>
-                <tr className="border-b border-stone-300">
-                  <th className="px-2 py-1 font-semibold">Sheet</th>
-                  <th className="px-2 py-1 font-semibold">Score</th>
-                  <th className="px-2 py-1 font-semibold">Errors</th>
-                  <th className="px-2 py-1 font-semibold">Warnings</th>
-                  <th className="px-2 py-1 font-semibold">Recognized headers</th>
-                  <th className="px-2 py-1 font-semibold">Rows</th>
-                </tr>
-              </thead>
-              <tbody>
-                {candidate.worksheetScores.map((sheet) => (
-                  <tr key={sheet.sheetName} className="border-b border-stone-200/70">
-                    <td className="px-2 py-1">{sheet.sheetName}</td>
-                    <td className="px-2 py-1">{sheet.score.toFixed(2)}</td>
-                    <td className="px-2 py-1">{sheet.errorCount}</td>
-                    <td className="px-2 py-1">{sheet.warningCount}</td>
-                    <td className="px-2 py-1">{sheet.recognizedHeaderCount}</td>
-                    <td className="px-2 py-1">{sheet.dataRowCount}</td>
+      {kind === "results-upload" && candidate.csvText ? (
+        <details className="mt-4 rounded-lg border border-stone-300 bg-white/70 p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-stone-800">
+            Preview CSV ({candidate.fileName})
+          </summary>
+          {candidate.worksheetScores && candidate.worksheetScores.length > 0 ? (
+            <div className="mt-3 overflow-x-auto">
+              <table className="min-w-full text-left text-xs text-stone-700">
+                <thead>
+                  <tr className="border-b border-stone-300">
+                    <th className="px-2 py-1 font-semibold">Sheet</th>
+                    <th className="px-2 py-1 font-semibold">Score</th>
+                    <th className="px-2 py-1 font-semibold">Errors</th>
+                    <th className="px-2 py-1 font-semibold">Warnings</th>
+                    <th className="px-2 py-1 font-semibold">Recognized headers</th>
+                    <th className="px-2 py-1 font-semibold">Rows</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-        <pre className="mt-3 max-h-52 overflow-auto whitespace-pre-wrap rounded bg-stone-900 p-3 text-xs text-stone-100">
-          {candidate.csvText}
-        </pre>
-      </details>
+                </thead>
+                <tbody>
+                  {candidate.worksheetScores.map((sheet) => (
+                    <tr key={sheet.sheetName} className="border-b border-stone-200/70">
+                      <td className="px-2 py-1">{sheet.sheetName}</td>
+                      <td className="px-2 py-1">{sheet.score.toFixed(2)}</td>
+                      <td className="px-2 py-1">{sheet.errorCount}</td>
+                      <td className="px-2 py-1">{sheet.warningCount}</td>
+                      <td className="px-2 py-1">{sheet.recognizedHeaderCount}</td>
+                      <td className="px-2 py-1">{sheet.dataRowCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          <pre className="mt-3 max-h-52 overflow-auto whitespace-pre-wrap rounded bg-stone-900 p-3 text-xs text-stone-100">
+            {candidate.csvText}
+          </pre>
+        </details>
+      ) : null}
     </article>
   );
 }

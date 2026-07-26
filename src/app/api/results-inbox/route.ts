@@ -3,7 +3,11 @@ import { Resend } from "resend";
 import * as XLSX from "xlsx";
 import { z } from "zod";
 import { env } from "@/lib/env";
-import { enqueueResultsInboxCandidate } from "@/lib/results-inbox";
+import {
+  enqueueMinorCorrectionCandidate,
+  enqueueResultsInboxCandidate,
+  parseMinorCorrectionEmail,
+} from "@/lib/results-inbox";
 import {
   countRecognizedRaceResultsHeaders,
   normalizeRaceResultsCsvHeaders,
@@ -221,15 +225,12 @@ async function fetchAttachmentBinary(
   return new Uint8Array(buffer);
 }
 
-async function extractBestCsvFromEvent(
+async function fetchIncomingEmailDetails(
   resend: Resend,
   event: z.infer<typeof receivedEmailEventSchema>
 ): Promise<{
-  csvText: string;
-  fileName: string;
-  sourceType: "csv" | "xlsx";
-  selectedWorksheet?: string;
-  worksheetScores?: WorksheetScore[];
+  emailId: string;
+  attachments: WebhookAttachment[];
   sender: string;
   subject: string;
   receivedAt: string;
@@ -249,6 +250,28 @@ async function extractBestCsvFromEvent(
   const bodyText = receivingEmail.data.text ?? "";
 
   const attachments = receivingEmail.data.attachments ?? event.data.attachments ?? [];
+  return {
+    emailId,
+    attachments,
+    sender,
+    subject,
+    receivedAt,
+    messageId,
+    bodyText,
+  };
+}
+
+async function extractBestCsvFromEmail(
+  resend: Resend,
+  email: Awaited<ReturnType<typeof fetchIncomingEmailDetails>>
+): Promise<{
+  csvText: string;
+  fileName: string;
+  sourceType: "csv" | "xlsx";
+  selectedWorksheet?: string;
+  worksheetScores?: WorksheetScore[];
+}> {
+  const { attachments, emailId } = email;
   if (attachments.length === 0) {
     throw new Error("Incoming email has no attachments.");
   }
@@ -260,11 +283,6 @@ async function extractBestCsvFromEvent(
       csvText: decodeCsvAttachment(binary, csvFirst.filename ?? "results.csv"),
       fileName: csvFirst.filename ?? "results.csv",
       sourceType: "csv",
-      sender,
-      subject,
-      receivedAt,
-      messageId,
-      bodyText,
     };
   }
 
@@ -281,11 +299,6 @@ async function extractBestCsvFromEvent(
     sourceType: "xlsx",
     selectedWorksheet: decodedXlsx.selectedWorksheet,
     worksheetScores: decodedXlsx.worksheetScores,
-    sender,
-    subject,
-    receivedAt,
-    messageId,
-    bodyText,
   };
 }
 
@@ -326,14 +339,37 @@ export async function POST(request: Request) {
   const resend = getResendClient();
 
   try {
-    const extracted = await extractBestCsvFromEvent(resend, parsedEvent.data);
-    const hints = parseRaceHints(extracted.subject, extracted.bodyText, extracted.fileName);
+    const email = await fetchIncomingEmailDetails(resend, parsedEvent.data);
+    const correctionRequest = parseMinorCorrectionEmail(email.subject, email.bodyText);
+    const hasSpreadsheetAttachment = email.attachments.some(
+      (attachment) => isCsvAttachment(attachment) || isXlsxAttachment(attachment)
+    );
+
+    if (correctionRequest && !hasSpreadsheetAttachment) {
+      const queued = await enqueueMinorCorrectionCandidate({
+        messageId: email.messageId,
+        sender: email.sender,
+        subject: email.subject,
+        bodyText: email.bodyText,
+        receivedAt: email.receivedAt,
+        correctionRequest,
+      });
+
+      return NextResponse.json({
+        status: queued.duplicate ? "duplicate" : "queued",
+        candidateId: queued.candidate.id,
+      });
+    }
+
+    const extracted = await extractBestCsvFromEmail(resend, email);
+
+    const hints = parseRaceHints(email.subject, email.bodyText, extracted.fileName);
     const queued = await enqueueResultsInboxCandidate({
-      messageId: extracted.messageId,
-      sender: extracted.sender,
-      subject: extracted.subject,
-      bodyText: extracted.bodyText,
-      receivedAt: extracted.receivedAt,
+      messageId: email.messageId,
+      sender: email.sender,
+      subject: email.subject,
+      bodyText: email.bodyText,
+      receivedAt: email.receivedAt,
       fileName: extracted.fileName,
       sourceType: extracted.sourceType,
       selectedWorksheet: extracted.selectedWorksheet,
