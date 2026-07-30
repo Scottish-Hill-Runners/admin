@@ -8,6 +8,7 @@ import {
   listAllClubNameSet,
 } from "@/lib/github";
 import {
+  normalizeRaceResultsCsv,
   validateRaceResultsCsv,
 } from "@/lib/results-csv";
 import {
@@ -89,10 +90,11 @@ export async function saveResultsDraft(
   }
 
   const values = parsed.data;
+  const normalizedCsvText = normalizeRaceResultsCsv(values.csvText);
   const editorSession = await getEditorSession();
   const author = buildPrAuthor(editorSession);
   const knownClubNames = await listAllClubNameSet();
-  const issues = validateRaceResultsCsv(values.csvText, { knownClubNames });
+  const issues = validateRaceResultsCsv(normalizedCsvText, { knownClubNames });
   const blockingIssues = issues.filter((issue) => issue.level === "error");
   const issueMessages = issues.map((issue) =>
     issue.row ? `${issue.level.toUpperCase()} row ${issue.row}: ${issue.message}` : `${issue.level.toUpperCase()}: ${issue.message}`
@@ -133,7 +135,7 @@ export async function saveResultsDraft(
     const result = await upsertContentPullRequest({
       title: `${values.raceId} ${values.year} results`,
       path: `races/${values.raceId}/${values.year}.csv`,
-      content: values.csvText.trimEnd() + "\n",
+      content: normalizedCsvText.trimEnd() + "\n",
       commitMessage: `Upload results: ${values.raceId} ${values.year}`,
       prTitle: `Results: ${values.raceId} ${values.year}`,
       prBody:

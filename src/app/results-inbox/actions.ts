@@ -17,7 +17,7 @@ import {
   markResultsInboxCandidateError,
   markResultsInboxCandidateRejected,
 } from "@/lib/results-inbox";
-import { validateRaceResultsCsv } from "@/lib/results-csv";
+import { normalizeRaceResultsCsv, validateRaceResultsCsv } from "@/lib/results-csv";
 import { requirePublisherAccess } from "@/lib/route-protection";
 
 const createResultsInboxDraftSchema = z.object({
@@ -96,8 +96,9 @@ export async function createResultsInboxDraftAction(
     };
   }
 
+  const normalizedCsvText = normalizeRaceResultsCsv(candidate.csvText);
   const knownClubNames = await listAllClubNameSet();
-  const issues = validateRaceResultsCsv(candidate.csvText, { knownClubNames });
+  const issues = validateRaceResultsCsv(normalizedCsvText, { knownClubNames });
   const blockingIssues = issues.filter((issue) => issue.level === "error");
 
   if (blockingIssues.length > 0) {
@@ -132,7 +133,7 @@ export async function createResultsInboxDraftAction(
     const result = await upsertContentPullRequest({
       title: `${values.raceId} ${values.year} results`,
       path: `races/${values.raceId}/${values.year}.csv`,
-      content: candidate.csvText.trimEnd() + "\n",
+      content: normalizedCsvText.trimEnd() + "\n",
       commitMessage: `Upload results: ${values.raceId} ${values.year}`,
       prTitle: `Results: ${values.raceId} ${values.year}`,
       prBody:
@@ -251,8 +252,9 @@ export async function createResultsInboxCorrectionDraftAction(
     };
   }
 
+  const normalizedCsvText = normalizeRaceResultsCsv(applied.csvText);
   const knownClubNames = await listAllClubNameSet();
-  const issues = validateRaceResultsCsv(applied.csvText, { knownClubNames });
+  const issues = validateRaceResultsCsv(normalizedCsvText, { knownClubNames });
   const blockingIssues = issues.filter((issue) => issue.level === "error");
   if (blockingIssues.length > 0) {
     const issueMessage = blockingIssues
@@ -285,7 +287,7 @@ export async function createResultsInboxCorrectionDraftAction(
     const result = await upsertContentPullRequest({
       title: `${values.raceId} ${values.year} results correction`,
       path: `races/${values.raceId}/${values.year}.csv`,
-      content: applied.csvText,
+      content: normalizedCsvText,
       commitMessage: `Apply results correction: ${values.raceId} ${values.year}`,
       prTitle: `Results correction: ${values.raceId} ${values.year}`,
       prBody:

@@ -10,7 +10,7 @@ import {
 } from "@/lib/results-inbox";
 import {
   countRecognizedRaceResultsHeaders,
-  normalizeRaceResultsCsvHeaders,
+  normalizeRaceResultsCsv,
   splitCsvLine,
   validateRaceResultsCsv,
 } from "@/lib/results-csv";
@@ -100,7 +100,7 @@ function countDataRows(csvText: string): number {
 }
 
 function scoreWorksheetCsv(csvText: string, sheetName: string): number {
-  const normalizedCsv = normalizeRaceResultsCsvHeaders(csvText);
+  const normalizedCsv = normalizeRaceResultsCsv(csvText);
   const lines = normalizedCsv
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
@@ -135,7 +135,7 @@ type WorksheetScore = {
 
 function decodeCsvAttachment(binary: Uint8Array, fileName: string): string {
   const csvText = Buffer.from(binary).toString("utf8");
-  const normalizedCsv = normalizeRaceResultsCsvHeaders(csvText);
+  const normalizedCsv = normalizeRaceResultsCsv(csvText);
   if (!normalizedCsv.trim()) {
     throw new Error(`Attachment ${fileName} is empty.`);
   }
@@ -151,7 +151,7 @@ function decodeXlsxAttachment(
   const scoredSheets = workbook.SheetNames.map((sheetName) => {
     const worksheet = workbook.Sheets[sheetName];
     const rawCsv = XLSX.utils.sheet_to_csv(worksheet, { blankrows: false });
-    const normalizedCsv = normalizeRaceResultsCsvHeaders(rawCsv);
+    const normalizedCsv = normalizeRaceResultsCsv(rawCsv);
 
     const lines = normalizedCsv
       .split(/\r?\n/)

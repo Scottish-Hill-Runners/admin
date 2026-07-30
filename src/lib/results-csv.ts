@@ -142,6 +142,12 @@ export function countRecognizedRaceResultsHeaders(headers: string[]): number {
   }, 0);
 }
 
+function normalizeRaceResultsTimeValue(value: string): string {
+  const trimmed = value.trim();
+  const matched = trimmed.match(/^((?:\d{1,2})[:.h](?:\d{2})(?:[:.m](?:\d{2}))?)\s*(?:am|pm)$/i);
+  return matched?.[1] ?? trimmed;
+}
+
 export function normalizeRaceResultsCsvHeaders(csvText: string): string {
   const normalizedLines = csvText.replace(/\r\n?/g, "\n").split("\n");
   const headerLineIndex = normalizedLines.findIndex((line) => line.trim().length > 0);
@@ -157,8 +163,51 @@ export function normalizeRaceResultsCsvHeaders(csvText: string): string {
   return normalizedLines.join("\n");
 }
 
+export function normalizeRaceResultsCsv(csvText: string): string {
+  const normalizedLines = csvText.replace(/\r\n?/g, "\n").split("\n");
+  const headerLineIndex = normalizedLines.findIndex((line) => line.trim().length > 0);
+
+  if (headerLineIndex < 0) {
+    return csvText;
+  }
+
+  const rawHeaders = splitCsvLine(normalizedLines[headerLineIndex]);
+  const canonicalHeaders = normalizeRaceResultsHeaders(rawHeaders);
+  normalizedLines[headerLineIndex] = serializeCsvLine(canonicalHeaders);
+
+  const timeColumnIndexes = canonicalHeaders.reduce<number[]>((indexes, header, index) => {
+    if (TIME_KEYS.includes(header)) {
+      indexes.push(index);
+    }
+    return indexes;
+  }, []);
+
+  if (timeColumnIndexes.length === 0) {
+    return normalizedLines.join("\n");
+  }
+
+  for (let lineIndex = headerLineIndex + 1; lineIndex < normalizedLines.length; lineIndex += 1) {
+    const line = normalizedLines[lineIndex];
+    if (!line || line.trim().length === 0) {
+      continue;
+    }
+
+    const values = splitCsvLine(line);
+    for (const columnIndex of timeColumnIndexes) {
+      if (columnIndex < values.length) {
+        values[columnIndex] = normalizeRaceResultsTimeValue(values[columnIndex] ?? "");
+      }
+    }
+
+    normalizedLines[lineIndex] = serializeCsvLine(values);
+  }
+
+  return normalizedLines.join("\n");
+}
+
 function parseCsv(csvText: string) {
-  const lines = csvText
+  const normalizedCsv = normalizeRaceResultsCsv(csvText);
+  const lines = normalizedCsv
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
     .filter((line) => line.length > 0);
