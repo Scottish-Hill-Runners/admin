@@ -102,6 +102,8 @@ export function ResultsInboxReviewCard({
               ? " (correction email)"
               : candidate.sourceType === "xlsx"
                 ? " (XLSX converted to CSV)"
+                : candidate.sourceType === "ods"
+                  ? " (ODS converted to CSV)"
                 : " (CSV)"}
             {candidate.selectedWorksheet ? `, sheet: ${candidate.selectedWorksheet}` : ""}
           </p>

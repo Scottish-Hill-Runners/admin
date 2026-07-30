@@ -77,6 +77,15 @@ function isXlsxAttachment(attachment: WebhookAttachment): boolean {
   );
 }
 
+function isOdsAttachment(attachment: WebhookAttachment): boolean {
+  const lowerName = (attachment.filename ?? "").toLowerCase();
+  const lowerMime = (attachment.content_type ?? "").toLowerCase();
+  return (
+    lowerName.endsWith(".ods") ||
+    lowerMime === "application/vnd.oasis.opendocument.spreadsheet"
+  );
+}
+
 function countDataRows(csvText: string): number {
   const lines = csvText
     .split(/\r?\n/)
@@ -267,7 +276,7 @@ async function extractBestCsvFromEmail(
 ): Promise<{
   csvText: string;
   fileName: string;
-  sourceType: "csv" | "xlsx";
+  sourceType: "csv" | "xlsx" | "ods";
   selectedWorksheet?: string;
   worksheetScores?: WorksheetScore[];
 }> {
@@ -286,19 +295,22 @@ async function extractBestCsvFromEmail(
     };
   }
 
-  const xlsxFirst = attachments.find((attachment) => isXlsxAttachment(attachment));
-  if (!xlsxFirst) {
-    throw new Error("No CSV or XLSX attachment found.");
+  const workbookAttachment = attachments.find(
+    (attachment) => isXlsxAttachment(attachment) || isOdsAttachment(attachment)
+  );
+  if (!workbookAttachment) {
+    throw new Error("No CSV, XLSX, or ODS attachment found.");
   }
 
-  const binary = await fetchAttachmentBinary(resend, emailId, xlsxFirst);
-  const decodedXlsx = decodeXlsxAttachment(binary, xlsxFirst.filename ?? "results.xlsx");
+  const binary = await fetchAttachmentBinary(resend, emailId, workbookAttachment);
+  const decodedWorkbook = decodeXlsxAttachment(binary, workbookAttachment.filename ?? "results.xlsx");
+  const sourceType = isOdsAttachment(workbookAttachment) ? "ods" : "xlsx";
   return {
-    csvText: decodedXlsx.csvText,
-    fileName: xlsxFirst.filename ?? "results.xlsx",
-    sourceType: "xlsx",
-    selectedWorksheet: decodedXlsx.selectedWorksheet,
-    worksheetScores: decodedXlsx.worksheetScores,
+    csvText: decodedWorkbook.csvText,
+    fileName: workbookAttachment.filename ?? "results.xlsx",
+    sourceType,
+    selectedWorksheet: decodedWorkbook.selectedWorksheet,
+    worksheetScores: decodedWorkbook.worksheetScores,
   };
 }
 
@@ -342,7 +354,8 @@ export async function POST(request: Request) {
     const email = await fetchIncomingEmailDetails(resend, parsedEvent.data);
     const correctionRequest = parseMinorCorrectionEmail(email.subject, email.bodyText);
     const hasSpreadsheetAttachment = email.attachments.some(
-      (attachment) => isCsvAttachment(attachment) || isXlsxAttachment(attachment)
+      (attachment) =>
+        isCsvAttachment(attachment) || isXlsxAttachment(attachment) || isOdsAttachment(attachment)
     );
 
     if (correctionRequest && !hasSpreadsheetAttachment) {

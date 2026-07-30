@@ -39,8 +39,8 @@ export default async function ResultsInboxPage() {
 
         {candidates.length === 0 ? (
           <p className="mt-6 text-sm leading-6 text-stone-700">
-            No incoming results are queued yet. Send a CSV or XLSX attachment to the monitored
-            mailbox and it will appear here after ingestion.
+            No incoming results are queued yet. Send a CSV, XLSX, or ODS attachment to the
+            monitored mailbox and it will appear here after ingestion.
           </p>
         ) : (
           <div className="mt-6 space-y-4">

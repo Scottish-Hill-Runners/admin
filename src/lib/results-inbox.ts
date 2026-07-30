@@ -128,7 +128,7 @@ export type ResultsInboxCandidate = {
   subject: string;
   receivedAt: string;
   fileName: string;
-  sourceType?: "csv" | "xlsx";
+  sourceType?: "csv" | "xlsx" | "ods";
   selectedWorksheet?: string;
   worksheetScores?: Array<{
     sheetName: string;
@@ -954,7 +954,7 @@ function fingerprintCorrection(
 
 function parseRaceIdYearFromFileName(fileName: string): { raceId: string; year: string } | null {
   const normalizedFile = fileName.trim().toLowerCase();
-  const matched = normalizedFile.match(/([a-z0-9-]+)[-_](\d{4}\*?)\.(?:csv|xlsx)$/);
+  const matched = normalizedFile.match(/([a-z0-9-]+)[-_](\d{4}\*?)\.(?:csv|xlsx|ods)$/);
   if (!matched) {
     return null;
   }
@@ -1041,7 +1041,7 @@ export async function enqueueResultsInboxCandidate(input: {
   bodyText?: string;
   receivedAt?: string;
   fileName: string;
-  sourceType?: "csv" | "xlsx";
+  sourceType?: "csv" | "xlsx" | "ods";
   selectedWorksheet?: string;
   worksheetScores?: Array<{
     sheetName: string;
