@@ -167,7 +167,7 @@ const resultsInboxCandidateSchema = z.object({
   subject: z.string().min(1),
   receivedAt: z.string().min(1),
   fileName: z.string().min(1),
-  sourceType: z.enum(["csv", "xlsx"]).optional(),
+  sourceType: z.enum(["csv", "xlsx", "ods"]).optional(),
   selectedWorksheet: z.string().min(1).optional(),
   worksheetScores: z
     .array(
@@ -994,16 +994,37 @@ async function loadStore(): Promise<ResultsInboxStore> {
 
   try {
     const parsed = resultsInboxStoreSchema.safeParse(JSON.parse(raw));
-    if (!parsed.success) {
+    if (parsed.success) {
+      return {
+        version: 1,
+        items: parsed.data.items.map((item) => ({
+          ...item,
+          kind: item.kind ?? "results-upload",
+        })),
+      };
+    }
+
+    const fallbackParsed = z
+      .object({
+        items: z.array(z.unknown()),
+      })
+      .safeParse(JSON.parse(raw));
+
+    if (!fallbackParsed.success) {
       return { version: 1, items: [] };
     }
 
+    const validItems = fallbackParsed.data.items
+      .map((item) => resultsInboxCandidateSchema.safeParse(item))
+      .filter((result): result is { success: true; data: ResultsInboxCandidate } => result.success)
+      .map((result) => ({
+        ...result.data,
+        kind: result.data.kind ?? "results-upload",
+      }));
+
     return {
       version: 1,
-      items: parsed.data.items.map((item) => ({
-        ...item,
-        kind: item.kind ?? "results-upload",
-      })),
+      items: validItems,
     };
   } catch {
     return { version: 1, items: [] };
