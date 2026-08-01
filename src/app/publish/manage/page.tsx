@@ -2,6 +2,7 @@ import { EditorialShell } from "@/components/editorial-shell";
 import { PublishManageForm } from "@/components/publish-manage-form";
 import {
   getStagingStatus,
+  listUnlinkedDraftUpdates,
   listOpenStagingPullRequests,
   listPublishNewsCandidates,
 } from "@/lib/github";
@@ -11,10 +12,11 @@ import { env } from "@/lib/env";
 export default async function PublishManagePage() {
   await requirePublisherAccess();
 
-  const [stagingStatus, pendingSubmissions, publishNewsCandidates] = await Promise.all([
+  const [stagingStatus, pendingSubmissions, publishNewsCandidates, unlinkedDraftUpdates] = await Promise.all([
     getStagingStatus(),
     listOpenStagingPullRequests(),
     listPublishNewsCandidates(),
+    listUnlinkedDraftUpdates(),
   ]);
 
   const socialPostingAvailable =
@@ -37,6 +39,7 @@ export default async function PublishManagePage() {
         stagingStatus={stagingStatus}
         socialCandidates={socialCandidates}
         socialPostingAvailable={socialPostingAvailable}
+        unlinkedDraftUpdates={unlinkedDraftUpdates}
       />
     </EditorialShell>
   );

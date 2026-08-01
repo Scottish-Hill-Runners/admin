@@ -7,7 +7,7 @@ import {
   rejectSubmissionAction,
   type ManageActionState,
 } from "@/app/publish/manage/actions";
-import type { StagingPullRequest } from "@/lib/github";
+import type { StagingPullRequest, UnlinkedDraftUpdate } from "@/lib/github";
 import type { StagingStatus } from "@/lib/github";
 import type { PublishNewsCandidate } from "@/lib/news-social";
 
@@ -280,11 +280,13 @@ export function PublishManageForm({
   stagingStatus,
   socialCandidates,
   socialPostingAvailable,
+  unlinkedDraftUpdates,
 }: {
   pendingSubmissions: StagingPullRequest[];
   stagingStatus: StagingStatus;
   socialCandidates: PublishNewsCandidate[];
   socialPostingAvailable: boolean;
+  unlinkedDraftUpdates: UnlinkedDraftUpdate[];
 }) {
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -298,6 +300,32 @@ export function PublishManageForm({
               No submissions are waiting. All editor saves have already been accepted or
               merged automatically.
             </p>
+            {unlinkedDraftUpdates.length > 0 ? (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900">
+                <p className="font-semibold uppercase tracking-[0.14em] text-amber-800">
+                  Needs checking
+                </p>
+                <p className="mt-1">
+                  {unlinkedDraftUpdates.length} draft update
+                  {unlinkedDraftUpdates.length === 1 ? " was" : "s were"} found in the
+                  content store without an open submission.
+                </p>
+                <p className="mt-1">
+                  These updates will not appear in this list until a submission is opened for
+                  them.
+                </p>
+                <ul className="mt-2 max-h-40 list-disc space-y-1 overflow-auto pl-4 font-mono text-[11px]">
+                  {unlinkedDraftUpdates.slice(0, 20).map((item) => (
+                    <li key={item.refName}>{item.refName}</li>
+                  ))}
+                </ul>
+                {unlinkedDraftUpdates.length > 20 ? (
+                  <p className="mt-1 text-[11px] text-amber-800">
+                    Showing 20 of {unlinkedDraftUpdates.length} references.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ) : (
           pendingSubmissions.map((pr) => <AcceptSubmissionForm key={pr.number} pr={pr} />)

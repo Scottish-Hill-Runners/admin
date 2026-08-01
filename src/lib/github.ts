@@ -2184,6 +2184,10 @@ export type StagingPullRequest = {
   submitterEmail: string | null;
 };
 
+export type UnlinkedDraftUpdate = {
+  refName: string;
+};
+
 type PullRequestListResponseItem = {
   number: number;
   title: string;
@@ -2493,6 +2497,7 @@ export async function listOpenStagingPullRequests(): Promise<StagingPullRequest[
   }
 
   const repo = parseRepoSlug(contentConfig.repo);
+  const expectedBase = contentConfig.stagingBranch.trim();
 
   const prs = await requestGitHubGet<PullRequestListResponseItem[]>(
     client,
@@ -2501,26 +2506,84 @@ export async function listOpenStagingPullRequests(): Promise<StagingPullRequest[
       owner: repo.owner,
       repo: repo.repo,
       state: "open",
-      base: contentConfig.stagingBranch,
       sort: "created",
       direction: "asc",
-      per_page: 50,
+      per_page: 100,
       page: 1,
     }
   );
 
-  return prs.map((pr) => {
-    const parsedAuthor = parseSubmissionAuthor(pr.body);
+  return prs
+    .filter((pr) => (pr.base?.ref ?? "").trim() === expectedBase)
+    .map((pr) => {
+      const parsedAuthor = parseSubmissionAuthor(pr.body);
 
-    return {
-      number: pr.number,
-      title: pr.title,
-      createdAt: pr.created_at,
-      htmlUrl: pr.html_url,
-      submitterName: parsedAuthor.name,
-      submitterEmail: parsedAuthor.email,
-    };
-  });
+      return {
+        number: pr.number,
+        title: pr.title,
+        createdAt: pr.created_at,
+        htmlUrl: pr.html_url,
+        submitterName: parsedAuthor.name,
+        submitterEmail: parsedAuthor.email,
+      };
+    });
+}
+
+export async function listUnlinkedDraftUpdates(): Promise<UnlinkedDraftUpdate[]> {
+  const client = getGitHubClient();
+  if (!client) {
+    throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+  const normalizedRepo = `${repo.owner}/${repo.repo}`.toLowerCase();
+
+  const [branches, openPulls] = await Promise.all([
+    requestGitHubGet<Array<{ name: string }>>(
+      client,
+      "GET /repos/{owner}/{repo}/branches",
+      {
+        owner: repo.owner,
+        repo: repo.repo,
+        per_page: 100,
+        page: 1,
+      }
+    ),
+    requestGitHubGet<PullRequestListResponseItem[]>(
+      client,
+      "GET /repos/{owner}/{repo}/pulls",
+      {
+        owner: repo.owner,
+        repo: repo.repo,
+        state: "open",
+        per_page: 100,
+        page: 1,
+      }
+    ),
+  ]);
+
+  const openDraftRefs = new Set(
+    openPulls
+      .filter((pull) => {
+        const headRef = pull.head?.ref ?? "";
+        if (!headRef.startsWith(ADMIN_DRAFT_BRANCH_PREFIX)) {
+          return false;
+        }
+
+        const headRepo = pull.head?.repo?.full_name?.toLowerCase();
+        return !headRepo || headRepo === normalizedRepo;
+      })
+      .map((pull) => pull.head?.ref ?? "")
+      .filter(Boolean)
+  );
+
+  return branches
+    .map((branch) => branch.name)
+    .filter((name) => name.startsWith(ADMIN_DRAFT_BRANCH_PREFIX))
+    .filter((name) => name !== contentConfig.branch && name !== contentConfig.stagingBranch)
+    .filter((name) => !openDraftRefs.has(name))
+    .sort((left, right) => left.localeCompare(right))
+    .map((refName) => ({ refName }));
 }
 
 export async function mergePullRequest(pullNumber: number): Promise<{ sha: string }> {
