@@ -5,6 +5,7 @@ import {
   acceptSubmissionAction,
   publishLiveAction,
   rejectSubmissionAction,
+  updateSubmissionFileAction,
   type ManageActionState,
 } from "@/app/publish/manage/actions";
 import type { StagingPullRequest, UnlinkedDraftUpdate } from "@/lib/github";
@@ -12,6 +13,95 @@ import type { StagingStatus } from "@/lib/github";
 import type { PublishNewsCandidate } from "@/lib/news-social";
 
 const idle: ManageActionState = { status: "idle" };
+
+function SubmissionFilePanel({
+  pullNumber,
+  file,
+}: {
+  pullNumber: number;
+  file: StagingPullRequest["changedFiles"][number];
+}) {
+  const [editState, editFormAction, isEditPending] = useActionState<
+    ManageActionState,
+    FormData
+  >(updateSubmissionFileAction, idle);
+
+  const diffLength = file.patch?.length ?? 0;
+  const contentLength = file.currentContent?.length ?? 0;
+  const shouldHideDiffPreview =
+    file.isEditableText &&
+    Boolean(file.patch) &&
+    contentLength > 0 &&
+    diffLength / contentLength >= 0.8;
+
+  return (
+    <details className="rounded-lg border border-stone-300 bg-white/70 p-3">
+      <summary className="cursor-pointer text-xs font-semibold text-stone-800">
+        {file.path} · {file.changeType}
+      </summary>
+
+      <div className="mt-3 space-y-3">
+        {!shouldHideDiffPreview ? (
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">
+              Diff preview
+            </p>
+            {file.patch ? (
+              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-stone-900 p-3 text-[11px] text-stone-100">
+                {file.patch}
+              </pre>
+            ) : (
+              <p className="mt-1 text-xs text-stone-500">No inline diff is available for this file.</p>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs text-stone-500">
+            Diff preview hidden because it is nearly the same size as the file.
+          </p>
+        )}
+
+        {file.isEditableText ? (
+          <form action={editFormAction} className="space-y-2">
+            <input type="hidden" name="pullNumber" value={pullNumber} />
+            <input type="hidden" name="path" value={file.path} />
+            <label className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">
+              Quick edit
+            </label>
+            <textarea
+              name="content"
+              defaultValue={file.currentContent ?? ""}
+              rows={10}
+              disabled={isEditPending}
+              className="w-full rounded-md border border-stone-300 bg-white px-3 py-2 font-mono text-xs text-stone-900 disabled:cursor-not-allowed disabled:bg-stone-100"
+            />
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={isEditPending}
+                className="rounded-full bg-stone-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-400"
+              >
+                {isEditPending ? "Saving…" : "Save file update"}
+              </button>
+              {editState.status !== "idle" ? (
+                <p
+                  className={`text-xs ${
+                    editState.status === "success" ? "text-green-700" : "text-red-700"
+                  }`}
+                >
+                  {editState.message}
+                </p>
+              ) : null}
+            </div>
+          </form>
+        ) : (
+          <p className="text-xs text-stone-500">
+            Quick edit is only available for text files (.md and .csv).
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
 
 function AcceptSubmissionForm({ pr }: { pr: StagingPullRequest }) {
   const [acceptState, acceptFormAction, isAcceptPending] = useActionState<
@@ -61,7 +151,7 @@ function AcceptSubmissionForm({ pr }: { pr: StagingPullRequest }) {
           rel="noreferrer"
           className="shrink-0 text-xs font-medium text-amber-700 underline hover:text-amber-900"
         >
-          View details
+          View details on GitHub
         </a>
       </div>
 
@@ -101,6 +191,21 @@ function AcceptSubmissionForm({ pr }: { pr: StagingPullRequest }) {
               {isRejectPending ? "Rejecting…" : "Reject submission"}
             </button>
           </form>
+        </div>
+      ) : null}
+
+      {pr.changedFiles.length > 0 ? (
+        <div className="mt-2 space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">
+            Changed files
+          </p>
+          {pr.changedFiles.map((file) => (
+            <SubmissionFilePanel
+              key={`${pr.number}:${file.path}`}
+              pullNumber={pr.number}
+              file={file}
+            />
+          ))}
         </div>
       ) : null}
     </div>

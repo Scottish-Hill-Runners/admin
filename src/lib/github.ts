@@ -2182,6 +2182,15 @@ export type StagingPullRequest = {
   htmlUrl: string;
   submitterName: string | null;
   submitterEmail: string | null;
+  changedFiles: StagingPullRequestChangedFile[];
+};
+
+export type StagingPullRequestChangedFile = {
+  path: string;
+  changeType: PullRequestFileResponseItem["status"];
+  patch: string | null;
+  isEditableText: boolean;
+  currentContent: string | null;
 };
 
 export type UnlinkedDraftUpdate = {
@@ -2219,7 +2228,12 @@ type PullRequestDetailResponseItem = PullRequestListResponseItem & {
 type PullRequestFileResponseItem = {
   filename: string;
   status: "added" | "removed" | "modified" | "renamed" | "copied" | "changed";
+  patch?: string;
 };
+
+function isEditableTextSubmissionPath(path: string): boolean {
+  return path.endsWith(".md") || path.endsWith(".csv");
+}
 
 function parseSubmissionAuthor(body: string | null | undefined): {
   name: string | null;
@@ -2513,10 +2527,48 @@ export async function listOpenStagingPullRequests(): Promise<StagingPullRequest[
     }
   );
 
-  return prs
-    .filter((pr) => (pr.base?.ref ?? "").trim() === expectedBase)
-    .map((pr) => {
+  const stagingPulls = prs.filter((pr) => (pr.base?.ref ?? "").trim() === expectedBase);
+
+  return Promise.all(
+    stagingPulls.map(async (pr) => {
       const parsedAuthor = parseSubmissionAuthor(pr.body);
+      const headRef = pr.head?.ref ?? "";
+
+      const files = await requestGitHubGet<PullRequestFileResponseItem[]>(
+        client,
+        "GET /repos/{owner}/{repo}/pulls/{pull_number}/files",
+        {
+          owner: repo.owner,
+          repo: repo.repo,
+          pull_number: pr.number,
+          per_page: 100,
+          page: 1,
+        }
+      );
+
+      const changedFiles = await Promise.all(
+        files.map(async (file) => {
+          const isEditableText =
+            file.status !== "removed" &&
+            Boolean(headRef) &&
+            isEditableTextSubmissionPath(file.filename);
+
+          let currentContent: string | null = null;
+          if (isEditableText && headRef) {
+            currentContent = await getContentFileAtRef(file.filename, headRef, {
+              nullOn404: true,
+            });
+          }
+
+          return {
+            path: file.filename,
+            changeType: file.status,
+            patch: file.patch ?? null,
+            isEditableText,
+            currentContent,
+          } satisfies StagingPullRequestChangedFile;
+        })
+      );
 
       return {
         number: pr.number,
@@ -2525,8 +2577,67 @@ export async function listOpenStagingPullRequests(): Promise<StagingPullRequest[
         htmlUrl: pr.html_url,
         submitterName: parsedAuthor.name,
         submitterEmail: parsedAuthor.email,
-      };
-    });
+        changedFiles,
+      } satisfies StagingPullRequest;
+    })
+  );
+}
+
+export async function updateStagingPullRequestFile(input: {
+  pullNumber: number;
+  path: string;
+  content: string;
+  author?: ContentPrAuthor;
+}): Promise<void> {
+  const client = getGitHubClient();
+  if (!client) {
+    throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
+  }
+
+  if (!Number.isInteger(input.pullNumber) || input.pullNumber <= 0) {
+    throw new Error("Invalid submission reference.");
+  }
+
+  const normalizedPath = normalizeRepoPath(input.path);
+  if (!isEditableTextSubmissionPath(normalizedPath)) {
+    throw new Error("Only text files can be edited from this screen.");
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+  const pullRequest = await client.pulls.get({
+    owner: repo.owner,
+    repo: repo.repo,
+    pull_number: input.pullNumber,
+  });
+
+  if (pullRequest.data.state !== "open") {
+    throw new Error("This submission is no longer open.");
+  }
+
+  if (pullRequest.data.base.ref !== contentConfig.stagingBranch) {
+    throw new Error("This submission is not targeting draft updates.");
+  }
+
+  const headRef = toSafeGitRef(pullRequest.data.head.ref);
+  if (!headRef) {
+    throw new Error("Could not determine the submission branch.");
+  }
+
+  const existingSha = await getExistingFileSha(client, repo, normalizedPath, headRef);
+  if (!existingSha) {
+    throw new Error("This file no longer exists in the submission branch.");
+  }
+
+  await client.repos.createOrUpdateFileContents({
+    owner: repo.owner,
+    repo: repo.repo,
+    path: normalizedPath,
+    branch: headRef,
+    message: `Edit submission file: ${normalizedPath}`,
+    content: toBase64(input.content),
+    sha: existingSha,
+    ...(input.author ? { author: input.author, committer: input.author } : {}),
+  });
 }
 
 export async function listUnlinkedDraftUpdates(): Promise<UnlinkedDraftUpdate[]> {

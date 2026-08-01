@@ -7,6 +7,7 @@ import {
   listPublishNewsCandidates,
   mergePullRequest,
   publishAndMergeToLive,
+  updateStagingPullRequestFile,
 } from "@/lib/github";
 import { requirePublisherAccess } from "@/lib/route-protection";
 import { buildPrAuthor } from "@/lib/auth-session";
@@ -22,6 +23,12 @@ const publishLiveRequestSchema = z.object({
     .array(z.string().regex(/^\d{4}\/\d{4}-\d{2}-\d{2}(?:-[a-z0-9-]+)?$/))
     .max(25)
     .default([]),
+});
+
+const submissionFileEditSchema = z.object({
+  pullNumber: z.coerce.number().int().positive(),
+  path: z.string().trim().min(1),
+  content: z.string(),
 });
 
 type SocialFailureItem = {
@@ -255,6 +262,58 @@ export async function publishLiveAction(
         error instanceof Error
           ? error.message
           : "Something went wrong while publishing. Contact an administrator.",
+    };
+  }
+}
+
+export async function updateSubmissionFileAction(
+  previousState: ManageActionState,
+  formData: FormData
+): Promise<ManageActionState> {
+  void previousState;
+
+  const session = await requirePublisherAccess();
+  const author = buildPrAuthor(session);
+
+  const parsed = submissionFileEditSchema.safeParse({
+    pullNumber: formData.get("pullNumber"),
+    path: formData.get("path"),
+    content: formData.get("content"),
+  });
+
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: "Could not save this file update. Please try again.",
+    };
+  }
+
+  try {
+    await updateStagingPullRequestFile({
+      pullNumber: parsed.data.pullNumber,
+      path: parsed.data.path,
+      content: parsed.data.content,
+      author: author ?? undefined,
+    });
+
+    return {
+      status: "success",
+      message: "File update saved to this submission.",
+    };
+  } catch (error) {
+    if (isGitHubAccessError(error)) {
+      return {
+        status: "error",
+        message: "Publishing is not set up yet. Please contact an administrator.",
+      };
+    }
+
+    return {
+      status: "error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "This file could not be updated right now. Please try again.",
     };
   }
 }
