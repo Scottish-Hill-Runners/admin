@@ -76,14 +76,14 @@ export async function createResultsInboxDraftAction(
   if (!candidate) {
     return {
       status: "error",
-      message: "This queued item no longer exists.",
+      message: "This email is no longer available.",
     };
   }
 
   if (getResultsInboxCandidateKind(candidate) !== "results-upload" || !candidate.csvText) {
     return {
       status: "error",
-      message: "This queued item is not a results file upload.",
+      message: "This email is not a results file upload.",
     };
   }
 
@@ -200,7 +200,7 @@ export async function createResultsInboxCorrectionDraftAction(
   if (!candidate) {
     return {
       status: "error",
-      message: "This queued item no longer exists.",
+      message: "This email is no longer available.",
     };
   }
 
@@ -219,7 +219,7 @@ export async function createResultsInboxCorrectionDraftAction(
   ) {
     return {
       status: "error",
-      message: "This queued item is not a correction email.",
+      message: "This email is not a correction message.",
     };
   }
 
@@ -338,16 +338,16 @@ export async function rejectResultsInboxCandidateAction(
 
   const candidateId = String(formData.get("candidateId") ?? "").trim();
   if (!candidateId) {
-    return { status: "error", message: "Invalid queued item reference." };
+    return { status: "error", message: "Invalid email reference." };
   }
 
   const candidate = await markResultsInboxCandidateRejected(candidateId);
   if (!candidate) {
-    return { status: "error", message: "This queued item no longer exists." };
+    return { status: "error", message: "This email is no longer available." };
   }
 
   return {
     status: "success",
-    message: "Queued item dismissed.",
+    message: "Email dismissed.",
   };
 }

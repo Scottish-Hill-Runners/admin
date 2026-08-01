@@ -2,11 +2,22 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import * as XLSX from "xlsx";
 import { z } from "zod";
+import { contentConfig } from "@/lib/content-config";
 import { env } from "@/lib/env";
+import {
+  isGitHubAccessError,
+  getRaceResultsDraft,
+  listAllClubNameSet,
+  upsertContentPullRequest,
+} from "@/lib/github";
 import {
   enqueueMinorCorrectionCandidate,
   enqueueResultsInboxCandidate,
+  markResultsInboxCandidateDraftCreated,
+  markResultsInboxCandidateError,
+  recordResultsInboxFailure,
   parseMinorCorrectionEmail,
+  applyMinorCorrectionToCsv,
 } from "@/lib/results-inbox";
 import {
   countRecognizedRaceResultsHeaders,
@@ -84,6 +95,14 @@ function isOdsAttachment(attachment: WebhookAttachment): boolean {
     lowerName.endsWith(".ods") ||
     lowerMime === "application/vnd.oasis.opendocument.spreadsheet"
   );
+}
+
+function toBranchSafeSegment(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function countDataRows(csvText: string): number {
@@ -314,6 +333,271 @@ async function extractBestCsvFromEmail(
   };
 }
 
+function summarizeValidationIssues(
+  issues: Array<{ level: string; row?: number | null; message: string }>
+): string {
+  const blockingIssues = issues.filter((issue) => issue.level === "error");
+  return blockingIssues
+    .slice(0, 3)
+    .map((issue) => (issue.row != null ? `row ${issue.row}: ${issue.message}` : issue.message))
+    .join("; ");
+}
+
+async function processResultsUploadEmail(
+  resend: Resend,
+  email: Awaited<ReturnType<typeof fetchIncomingEmailDetails>>
+): Promise<NextResponse> {
+  const extracted = await extractBestCsvFromEmail(resend, email);
+  const hints = parseRaceHints(email.subject, email.bodyText, extracted.fileName);
+  const queued = await enqueueResultsInboxCandidate({
+    emailId: email.emailId,
+    messageId: email.messageId,
+    sender: email.sender,
+    subject: email.subject,
+    bodyText: email.bodyText,
+    receivedAt: email.receivedAt,
+    fileName: extracted.fileName,
+    sourceType: extracted.sourceType,
+    selectedWorksheet: extracted.selectedWorksheet,
+    worksheetScores: extracted.worksheetScores,
+    csvText: extracted.csvText,
+    raceId: hints.raceId,
+    year: hints.year,
+  });
+
+  const candidate = queued.candidate;
+  if (candidate.status === "draft-created" && candidate.submissionUrl) {
+    return NextResponse.json({
+      status: "already-processed",
+      candidateId: candidate.id,
+      submissionUrl: candidate.submissionUrl,
+    });
+  }
+
+  if (candidate.status === "error" || candidate.status === "rejected") {
+    return NextResponse.json({
+      status: candidate.status,
+      candidateId: candidate.id,
+    });
+  }
+
+  const normalizedCsvText = normalizeRaceResultsCsv(candidate.csvText ?? extracted.csvText);
+  const knownClubNames = await listAllClubNameSet();
+  const issues = validateRaceResultsCsv(normalizedCsvText, { knownClubNames });
+  const blockingIssues = issues.filter((issue) => issue.level === "error");
+
+  if (blockingIssues.length > 0) {
+    const issueMessage = summarizeValidationIssues(issues);
+    await markResultsInboxCandidateError(candidate.id, issueMessage);
+
+    return NextResponse.json({
+      status: "needs-checking",
+      candidateId: candidate.id,
+      message: issueMessage,
+    });
+  }
+
+  const warnings = issues.filter((issue) => issue.level === "warning");
+  const warningsSection =
+    warnings.length === 0
+      ? "No validation warnings."
+      : [
+          `### Validation warnings (${warnings.length})`,
+          ...warnings.map((issue) =>
+            issue.row ? `- Row ${issue.row}: ${issue.message}` : `- ${issue.message}`
+          ),
+        ].join("\n");
+
+  const raceIdBranchSegment = toBranchSafeSegment(String(candidate.raceId ?? hints.raceId ?? "race"));
+  const yearBranchSegment = toBranchSafeSegment(String(candidate.year ?? hints.year ?? "year"));
+
+  try {
+    const result = await upsertContentPullRequest({
+      title: `${String(candidate.raceId ?? hints.raceId ?? "Results")} ${String(candidate.year ?? hints.year ?? "")}`.trim(),
+      path: `races/${String(candidate.raceId ?? hints.raceId ?? "race")}/${String(candidate.year ?? hints.year ?? "year")}.csv`,
+      content: normalizedCsvText.trimEnd() + "\n",
+      commitMessage: `Upload results: ${String(candidate.raceId ?? hints.raceId ?? "Results")} ${String(candidate.year ?? hints.year ?? "")}`.trim(),
+      prTitle: `Results: ${String(candidate.raceId ?? hints.raceId ?? "Results")} ${String(candidate.year ?? hints.year ?? "")}`.trim(),
+      prBody:
+        `Added from an incoming results email.\n\n` +
+        `- Content repo: ${contentConfig.repo}\n` +
+        `- Path: races/${String(candidate.raceId ?? hints.raceId ?? "race")}/${String(candidate.year ?? hints.year ?? "year")}.csv\n` +
+        `- Source sender: ${candidate.sender}\n` +
+        `- Source subject: ${candidate.subject}\n\n` +
+        warningsSection,
+      branchName: `shr-admin/results-${raceIdBranchSegment}-${yearBranchSegment}`,
+    });
+
+    await markResultsInboxCandidateDraftCreated({
+      id: candidate.id,
+      submissionNumber: result.prNumber,
+      submissionUrl: result.prUrl,
+    });
+
+    return NextResponse.json({
+      status: "draft-created",
+      candidateId: candidate.id,
+      submissionNumber: result.prNumber,
+      submissionUrl: result.prUrl,
+    });
+  } catch (error) {
+    const message =
+      isGitHubAccessError(error)
+        ? "Publishing is not set up yet. Please contact an administrator."
+        : error instanceof Error
+          ? error.message
+          : "Failed to create this draft from the incoming email.";
+
+    await markResultsInboxCandidateError(candidate.id, message);
+
+    return NextResponse.json({
+      status: "needs-checking",
+      candidateId: candidate.id,
+      message,
+    });
+  }
+}
+
+async function processMinorCorrectionEmail(
+  resend: Resend,
+  email: Awaited<ReturnType<typeof fetchIncomingEmailDetails>>,
+  correctionRequest: NonNullable<ReturnType<typeof parseMinorCorrectionEmail>>
+): Promise<NextResponse> {
+  const queued = await enqueueMinorCorrectionCandidate({
+    emailId: email.emailId,
+    messageId: email.messageId,
+    sender: email.sender,
+    subject: email.subject,
+    bodyText: email.bodyText,
+    receivedAt: email.receivedAt,
+    correctionRequest,
+  });
+
+  const candidate = queued.candidate;
+  if (candidate.status === "draft-created" && candidate.submissionUrl) {
+    return NextResponse.json({
+      status: "already-processed",
+      candidateId: candidate.id,
+      submissionUrl: candidate.submissionUrl,
+    });
+  }
+
+  if (candidate.status === "error" || candidate.status === "rejected") {
+    return NextResponse.json({
+      status: candidate.status,
+      candidateId: candidate.id,
+    });
+  }
+
+  const effectiveCorrection = {
+    ...correctionRequest,
+    raceId: correctionRequest.raceId,
+    year: correctionRequest.year,
+  };
+
+  const existingDraft =
+    (await getRaceResultsDraft(effectiveCorrection.raceId, effectiveCorrection.year, {
+      ref: contentConfig.stagingBranch,
+    })) ?? (await getRaceResultsDraft(effectiveCorrection.raceId, effectiveCorrection.year));
+
+  if (!existingDraft) {
+    const message = "No results file was found for this race and year.";
+    await markResultsInboxCandidateError(candidate.id, message);
+
+    return NextResponse.json({
+      status: "needs-checking",
+      candidateId: candidate.id,
+      message,
+    });
+  }
+
+  const applied = applyMinorCorrectionToCsv(existingDraft.csvText, effectiveCorrection);
+  if (applied.status !== "matched") {
+    await markResultsInboxCandidateError(candidate.id, applied.message);
+    return NextResponse.json({
+      status: "needs-checking",
+      candidateId: candidate.id,
+      message: applied.message,
+    });
+  }
+
+  const normalizedCsvText = normalizeRaceResultsCsv(applied.csvText);
+  const knownClubNames = await listAllClubNameSet();
+  const issues = validateRaceResultsCsv(normalizedCsvText, { knownClubNames });
+  const blockingIssues = issues.filter((issue) => issue.level === "error");
+  if (blockingIssues.length > 0) {
+    const issueMessage = summarizeValidationIssues(issues);
+    await markResultsInboxCandidateError(candidate.id, issueMessage);
+    return NextResponse.json({
+      status: "needs-checking",
+      candidateId: candidate.id,
+      message: issueMessage,
+    });
+  }
+
+  const warnings = issues.filter((issue) => issue.level === "warning");
+  const warningsSection =
+    warnings.length === 0
+      ? "No validation warnings."
+      : [
+          `### Validation warnings (${warnings.length})`,
+          ...warnings.map((issue) =>
+            issue.row ? `- Row ${issue.row}: ${issue.message}` : `- ${issue.message}`
+          ),
+        ].join("\n");
+
+  const raceIdBranchSegment = toBranchSafeSegment(effectiveCorrection.raceId || "race");
+  const yearBranchSegment = toBranchSafeSegment(effectiveCorrection.year || "year");
+
+  try {
+    const result = await upsertContentPullRequest({
+      title: `${effectiveCorrection.raceId} ${effectiveCorrection.year} results correction`,
+      path: `races/${effectiveCorrection.raceId}/${effectiveCorrection.year}.csv`,
+      content: normalizedCsvText,
+      commitMessage: `Apply results correction: ${effectiveCorrection.raceId} ${effectiveCorrection.year}`,
+      prTitle: `Results correction: ${effectiveCorrection.raceId} ${effectiveCorrection.year}`,
+      prBody:
+        `Applied from an incoming results correction email.\n\n` +
+        `- Content repo: ${contentConfig.repo}\n` +
+        `- Path: races/${effectiveCorrection.raceId}/${effectiveCorrection.year}.csv\n` +
+        `- Source sender: ${candidate.sender}\n` +
+        `- Source subject: ${candidate.subject}\n` +
+        `- Applied change: ${applied.summary}\n` +
+        `- Matched row: ${applied.matchedRow.rowNumber}\n\n` +
+        warningsSection,
+      branchName: `shr-admin/results-correction-${raceIdBranchSegment}-${yearBranchSegment}`,
+    });
+
+    await markResultsInboxCandidateDraftCreated({
+      id: candidate.id,
+      submissionNumber: result.prNumber,
+      submissionUrl: result.prUrl,
+    });
+
+    return NextResponse.json({
+      status: "draft-created",
+      candidateId: candidate.id,
+      submissionNumber: result.prNumber,
+      submissionUrl: result.prUrl,
+    });
+  } catch (error) {
+    const message =
+      isGitHubAccessError(error)
+        ? "Publishing is not set up yet. Please contact an administrator."
+        : error instanceof Error
+          ? error.message
+          : "Failed to create this correction draft from the incoming email.";
+
+    await markResultsInboxCandidateError(candidate.id, message);
+
+    return NextResponse.json({
+      status: "needs-checking",
+      candidateId: candidate.id,
+      message,
+    });
+  }
+}
+
 function verifyResendWebhookEvent(requestBody: string, request: Request): unknown {
   const webhookSecret = env.RESULTS_INBOX_RESEND_WEBHOOK_SECRET;
   if (!webhookSecret) {
@@ -359,50 +643,40 @@ export async function POST(request: Request) {
     );
 
     if (correctionRequest && !hasSpreadsheetAttachment) {
-      const queued = await enqueueMinorCorrectionCandidate({
-        messageId: email.messageId,
-        sender: email.sender,
-        subject: email.subject,
-        bodyText: email.bodyText,
-        receivedAt: email.receivedAt,
-        correctionRequest,
-      });
-
-      return NextResponse.json({
-        status: queued.duplicate ? "duplicate" : "queued",
-        candidateId: queued.candidate.id,
-      });
+      return await processMinorCorrectionEmail(resend, email, correctionRequest);
     }
 
-    const extracted = await extractBestCsvFromEmail(resend, email);
-
-    const hints = parseRaceHints(email.subject, email.bodyText, extracted.fileName);
-    const queued = await enqueueResultsInboxCandidate({
-      messageId: email.messageId,
-      sender: email.sender,
-      subject: email.subject,
-      bodyText: email.bodyText,
-      receivedAt: email.receivedAt,
-      fileName: extracted.fileName,
-      sourceType: extracted.sourceType,
-      selectedWorksheet: extracted.selectedWorksheet,
-      worksheetScores: extracted.worksheetScores,
-      csvText: extracted.csvText,
-      raceId: hints.raceId,
-      year: hints.year,
-    });
-
-    return NextResponse.json({
-      status: queued.duplicate ? "duplicate" : "queued",
-      candidateId: queued.candidate.id,
-    });
+    return await processResultsUploadEmail(resend, email);
   } catch (error) {
+    const eventData = parsedEvent.data.data;
+    const emailId = eventData.email_id;
+    const receivedAt = eventData.created_at ?? new Date().toISOString();
+    const sender = eventData.from ?? "unknown@unknown";
+    const subject = eventData.subject ?? "(no subject)";
+    const messageId = eventData.message_id ?? emailId;
+    const message = error instanceof Error ? error.message : "Could not process this message right now.";
+
+    try {
+      await recordResultsInboxFailure({
+        emailId,
+        messageId,
+        sender,
+        subject,
+        receivedAt,
+        fileName: "(no attachment)",
+        bodyText: "",
+        errorMessage: message,
+      });
+    } catch {
+      // Best effort only. The webhook still returns success to stop retries.
+    }
+
     return NextResponse.json(
       {
-        message:
-          error instanceof Error ? error.message : "Could not queue this message right now.",
+        status: "needs-checking",
+        message,
       },
-      { status: 400 }
+      { status: 200 }
     );
   }
 }

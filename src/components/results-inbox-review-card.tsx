@@ -1,33 +1,25 @@
 "use client";
 
 import { useActionState } from "react";
-import {
-  createResultsInboxCorrectionDraftAction,
-  createResultsInboxDraftAction,
-  rejectResultsInboxCandidateAction,
-  type ResultsInboxActionState,
-} from "@/app/results-inbox/actions";
-import {
-  getResultsInboxCandidateKind,
-  type ResultsInboxCandidate,
-} from "@/lib/results-inbox";
+import { rejectResultsInboxCandidateAction, type ResultsInboxActionState } from "@/app/results-inbox/actions";
+import { getResultsInboxCandidateKind, type ResultsInboxCandidate } from "@/lib/results-inbox";
 
 const idleState: ResultsInboxActionState = { status: "idle" };
 
 function formatStatusLabel(status: ResultsInboxCandidate["status"]): string {
   if (status === "queued") {
-    return "Queued for review";
+    return "Received";
   }
 
   if (status === "draft-created") {
-    return "Draft already created";
+    return "Draft created";
   }
 
   if (status === "rejected") {
     return "Dismissed";
   }
 
-  return "Needs attention";
+  return "Needs checking";
 }
 
 function formatInferenceLabel(candidate: ResultsInboxCandidate): string | null {
@@ -52,37 +44,14 @@ export function ResultsInboxReviewCard({
   candidate: ResultsInboxCandidate;
 }) {
   const kind = getResultsInboxCandidateKind(candidate);
-  const [uploadCreateState, uploadCreateAction, isUploadCreatePending] = useActionState<
-    ResultsInboxActionState,
-    FormData
-  >(createResultsInboxDraftAction, idleState);
-  const [correctionCreateState, correctionCreateAction, isCorrectionCreatePending] = useActionState<
-    ResultsInboxActionState,
-    FormData
-  >(createResultsInboxCorrectionDraftAction, idleState);
   const [rejectState, rejectAction, isRejectPending] = useActionState<
     ResultsInboxActionState,
     FormData
   >(rejectResultsInboxCandidateAction, idleState);
 
-  const createState = kind === "minor-correction" ? correctionCreateState : uploadCreateState;
-  const createAction = kind === "minor-correction" ? correctionCreateAction : uploadCreateAction;
-  const isCreatePending =
-    kind === "minor-correction" ? isCorrectionCreatePending : isUploadCreatePending;
-  const isPending = isCreatePending || isRejectPending;
-  const currentState =
-    createState.status !== "idle"
-      ? createState
-      : rejectState;
+  const currentState = rejectState;
   const correctionRequest = candidate.correctionRequest;
-  const createButtonLabel =
-    kind === "minor-correction"
-      ? isCreatePending
-        ? "Creating correction draft..."
-        : "Create correction draft"
-      : isCreatePending
-        ? "Creating draft..."
-        : "Create draft";
+  const isPending = isRejectPending;
 
   return (
     <article className="rounded-2xl border border-stone-900/10 bg-stone-50/90 p-5">
@@ -97,6 +66,12 @@ export function ResultsInboxReviewCard({
             Received {new Date(candidate.receivedAt).toLocaleString("en-GB")}
           </p>
           <p className="mt-1 text-xs text-stone-600">
+            Email ID: {candidate.emailId}
+          </p>
+          <p className="mt-1 text-xs text-stone-600">
+            Message ID: {candidate.messageId}
+          </p>
+          <p className="mt-1 text-xs text-stone-600">
             Source file: {candidate.fileName}
             {kind === "minor-correction"
               ? " (correction email)"
@@ -104,9 +79,15 @@ export function ResultsInboxReviewCard({
                 ? " (XLSX converted to CSV)"
                 : candidate.sourceType === "ods"
                   ? " (ODS converted to CSV)"
-                : " (CSV)"}
+                  : " (CSV)"}
             {candidate.selectedWorksheet ? `, sheet: ${candidate.selectedWorksheet}` : ""}
           </p>
+          {candidate.raceId || candidate.year ? (
+            <p className="mt-1 text-xs text-stone-600">
+              {candidate.raceId ? `Race: ${candidate.raceId}` : "Race not set"}
+              {candidate.year ? `, year: ${candidate.year}` : ""}
+            </p>
+          ) : null}
         </div>
         {candidate.submissionUrl ? (
           <a
@@ -121,49 +102,7 @@ export function ResultsInboxReviewCard({
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
-        <form action={createAction} className="grid gap-3 sm:grid-cols-2">
-          <input type="hidden" name="candidateId" value={candidate.id} />
-
-          <label className="space-y-1 text-sm text-stone-800">
-            <span className="font-semibold">Race ID</span>
-            <input
-              name="raceId"
-              defaultValue={candidate.raceId}
-              className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
-              disabled={isPending || candidate.status === "draft-created"}
-            />
-            {createState.fieldErrors?.raceId?.map((error) => (
-              <p key={error} className="text-xs text-red-700">
-                {error}
-              </p>
-            ))}
-          </label>
-
-          <label className="space-y-1 text-sm text-stone-800">
-            <span className="font-semibold">Year</span>
-            <input
-              name="year"
-              defaultValue={candidate.year}
-              className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
-              disabled={isPending || candidate.status === "draft-created"}
-            />
-            {createState.fieldErrors?.year?.map((error) => (
-              <p key={error} className="text-xs text-red-700">
-                {error}
-              </p>
-            ))}
-          </label>
-
-          <div className="sm:col-span-2 flex flex-wrap gap-2">
-            <button
-              type="submit"
-              disabled={isPending || candidate.status === "draft-created"}
-              className="rounded-full bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-700 disabled:cursor-not-allowed disabled:bg-stone-400"
-            >
-              {createButtonLabel}
-            </button>
-          </div>
-
+        <div className="grid gap-3 sm:grid-cols-2">
           {kind === "minor-correction" && correctionRequest ? (
             <div className="sm:col-span-2 rounded-lg border border-stone-300 bg-white p-3 text-xs text-stone-700">
               <p className="font-semibold uppercase tracking-[0.12em] text-stone-500">
@@ -223,13 +162,13 @@ export function ResultsInboxReviewCard({
               </ul>
             </div>
           ) : null}
-        </form>
+        </div>
 
         <form action={rejectAction}>
           <input type="hidden" name="candidateId" value={candidate.id} />
           <button
             type="submit"
-            disabled={isPending || candidate.status === "draft-created" || candidate.status === "rejected"}
+            disabled={isPending || candidate.status === "rejected"}
             className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:text-stone-400"
           >
             {isRejectPending ? "Dismissing..." : "Dismiss"}

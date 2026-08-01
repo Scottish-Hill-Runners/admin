@@ -122,6 +122,7 @@ type ResultsInboxStatus =
 export type ResultsInboxCandidate = {
   kind?: ResultsInboxKind;
   id: string;
+  emailId: string;
   messageId: string;
   fingerprint: string;
   sender: string;
@@ -138,9 +139,10 @@ export type ResultsInboxCandidate = {
     recognizedHeaderCount: number;
     dataRowCount: number;
   }>;
+  bodyText?: string;
   csvText?: string;
-  raceId: string;
-  year: string;
+  raceId?: string;
+  year?: string;
   inferenceConfidence?: InferenceConfidence;
   inferenceSource?: InferenceSource;
   raceMatchCandidates?: ResultsInboxRaceMatch[];
@@ -161,6 +163,7 @@ type ResultsInboxStore = {
 const resultsInboxCandidateSchema = z.object({
   kind: z.enum(["results-upload", "minor-correction"]).optional(),
   id: z.string().min(1),
+  emailId: z.string().min(1),
   messageId: z.string().min(1),
   fingerprint: z.string().min(1),
   sender: z.string().min(1),
@@ -181,9 +184,10 @@ const resultsInboxCandidateSchema = z.object({
       })
     )
     .optional(),
+  bodyText: z.string().min(1).optional(),
   csvText: z.string().min(1).optional(),
-  raceId: z.string().min(1),
-  year: z.string().min(1),
+  raceId: z.string().min(1).optional(),
+  year: z.string().min(1).optional(),
   inferenceConfidence: z.enum(["high", "medium", "low", "none"]).optional(),
   inferenceSource: z
     .enum(["explicit-pattern", "calendar-match", "calendar-suggestion", "none"])
@@ -257,12 +261,7 @@ export function getResultsInboxCandidateKind(candidate: ResultsInboxCandidate): 
 }
 
 function sanitizeRaceId(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/-{2,}/g, "-")
-    .replace(/^-+|-+$/g, "");
+  return value.trim();
 }
 
 function sanitizeYear(value: string): string {
@@ -498,92 +497,45 @@ export function applyMinorCorrectionToCsv(
     };
   }
 
-  const requestedIdentifiers = [
-    correctionRequest.runnerPosition ? "position" : null,
-    correctionRequest.runnerName ? "name" : null,
-    correctionRequest.runnerCategory ? "category" : null,
-    correctionRequest.runnerClub ? "club" : null,
-  ].filter((value): value is string => value !== null);
-
-  if (requestedIdentifiers.length === 0) {
+  const normalizedRequestedPosition = normalizeComparisonValue(correctionRequest.runnerPosition);
+  if (!normalizedRequestedPosition) {
     return {
       status: "invalid",
-      message: "Correction email does not identify a runner clearly enough.",
+      message: "Correction email needs a runner position.",
       candidates: [],
     };
   }
 
-  const normalizedRequestedPosition = normalizeComparisonValue(correctionRequest.runnerPosition);
-  const normalizedRequestedName = normalizeComparisonValue(correctionRequest.runnerName);
-  const normalizedRequestedCategory = normalizeComparisonValue(correctionRequest.runnerCategory);
-  const normalizedRequestedClub = normalizeComparisonValue(correctionRequest.runnerClub);
-
   const candidates = rows
-    .map((row, rowIndex) => {
+    .flatMap((row, rowIndex) => {
       const record = buildRowRecord(headers, row);
       const reasons: string[] = [];
-      let score = 0;
-      let mismatch = false;
-
       const rowPosition = normalizeComparisonValue(record.RunnerPosition);
-      const rowName = normalizeComparisonValue(buildDisplayName(record));
-      const rowCategory = normalizeComparisonValue(record.RunnerCategory);
-      const rowClub = normalizeComparisonValue(record.Club);
 
-      if (normalizedRequestedPosition) {
-        if (rowPosition === normalizedRequestedPosition) {
-          score += 50;
-          reasons.push("Position matches.");
-        } else {
-          mismatch = true;
-        }
+      if (rowPosition !== normalizedRequestedPosition) {
+        return [] as ResultsInboxCorrectionRowMatch[];
       }
 
-      if (normalizedRequestedName) {
-        if (rowName === normalizedRequestedName) {
-          score += 50;
-          reasons.push("Name matches.");
-        } else {
-          mismatch = true;
-        }
-      }
+      reasons.push("Position matches.");
 
-      if (normalizedRequestedCategory) {
-        if (rowCategory === normalizedRequestedCategory) {
-          score += 20;
-          reasons.push("Category matches.");
-        } else {
-          mismatch = true;
-        }
-      }
-
-      if (normalizedRequestedClub) {
-        if (rowClub === normalizedRequestedClub) {
-          score += 20;
-          reasons.push("Club matches.");
-        } else {
-          mismatch = true;
-        }
-      }
-
-      return {
+      return [
+        {
         rowNumber: rowIndex + 2,
-        score,
+        score: 50,
         reasons,
         name: buildDisplayName(record),
         position: record.RunnerPosition,
         category: record.RunnerCategory,
         club: record.Club,
-        mismatch,
-      };
+        },
+      ];
     })
-    .filter((candidate) => !candidate.mismatch)
     .sort((left, right) => right.score - left.score);
 
   if (candidates.length === 0) {
     return {
       status: "unmatched",
-      message: "No results row matched all supplied runner details.",
+      message: "No results row matched the supplied position.",
       candidates: [],
     };
   }
@@ -593,7 +545,7 @@ export function applyMinorCorrectionToCsv(
   if (topMatches.length !== 1) {
     return {
       status: "ambiguous",
-      message: "More than one results row matches the supplied runner details.",
+      message: "More than one results row matches the supplied position.",
       candidates: candidates.slice(0, 5),
     };
   }
@@ -952,6 +904,26 @@ function fingerprintCorrection(
     .digest("hex");
 }
 
+function fingerprintInboxFailure(input: {
+  emailId: string;
+  subject: string;
+  bodyText?: string;
+  fileName?: string;
+  reason: string;
+}): string {
+  return createHash("sha256")
+    .update(input.emailId.trim().toLowerCase())
+    .update("\n")
+    .update(normalizeWhitespace(input.subject).toLowerCase())
+    .update("\n")
+    .update(normalizeWhitespace(input.fileName ?? "").toLowerCase())
+    .update("\n")
+    .update(normalizeWhitespace(input.bodyText ?? "").toLowerCase())
+    .update("\n")
+    .update(normalizeWhitespace(input.reason).toLowerCase())
+    .digest("hex");
+}
+
 function parseRaceIdYearFromFileName(fileName: string): { raceId: string; year: string } | null {
   const normalizedFile = fileName.trim().toLowerCase();
   const matched = normalizedFile.match(/([a-z0-9-]+)[-_](\d{4}\*?)\.(?:csv|xlsx|ods)$/);
@@ -999,6 +971,7 @@ async function loadStore(): Promise<ResultsInboxStore> {
         version: 1,
         items: parsed.data.items.map((item) => ({
           ...item,
+          emailId: item.emailId ?? item.messageId,
           kind: item.kind ?? "results-upload",
         })),
       };
@@ -1019,6 +992,7 @@ async function loadStore(): Promise<ResultsInboxStore> {
       .filter((result): result is { success: true; data: ResultsInboxCandidate } => result.success)
       .map((result) => ({
         ...result.data,
+        emailId: result.data.emailId ?? result.data.messageId,
         kind: result.data.kind ?? "results-upload",
       }));
 
@@ -1056,6 +1030,7 @@ export async function getResultsInboxCandidate(id: string): Promise<ResultsInbox
 }
 
 export async function enqueueResultsInboxCandidate(input: {
+  emailId: string;
   messageId: string;
   sender: string;
   subject: string;
@@ -1126,6 +1101,7 @@ export async function enqueueResultsInboxCandidate(input: {
   const candidate: ResultsInboxCandidate = {
     kind: "results-upload",
     id: randomUUID(),
+    emailId: input.emailId.trim() || randomUUID(),
     messageId: input.messageId.trim() || randomUUID(),
     fingerprint,
     sender: input.sender.trim(),
@@ -1153,6 +1129,7 @@ export async function enqueueResultsInboxCandidate(input: {
 }
 
 export async function enqueueMinorCorrectionCandidate(input: {
+  emailId: string;
   messageId: string;
   sender: string;
   subject: string;
@@ -1180,6 +1157,7 @@ export async function enqueueMinorCorrectionCandidate(input: {
   const candidate: ResultsInboxCandidate = {
     kind: "minor-correction",
     id: randomUUID(),
+    emailId: input.emailId.trim() || randomUUID(),
     messageId: input.messageId.trim() || randomUUID(),
     fingerprint,
     sender: input.sender.trim(),
@@ -1192,6 +1170,85 @@ export async function enqueueMinorCorrectionCandidate(input: {
     inferenceSource: "explicit-pattern",
     correctionRequest: input.correctionRequest,
     status: "queued",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+
+  store.items.push(candidate);
+  await saveStore(store);
+
+  return { candidate, duplicate: false };
+}
+
+export async function recordResultsInboxFailure(input: {
+  emailId: string;
+  messageId: string;
+  sender: string;
+  subject: string;
+  receivedAt?: string;
+  fileName?: string;
+  bodyText?: string;
+  sourceType?: "csv" | "xlsx" | "ods";
+  selectedWorksheet?: string;
+  worksheetScores?: Array<{
+    sheetName: string;
+    score: number;
+    errorCount: number;
+    warningCount: number;
+    recognizedHeaderCount: number;
+    dataRowCount: number;
+  }>;
+  kind?: ResultsInboxKind;
+  raceId?: string;
+  year?: string;
+  inferenceConfidence?: InferenceConfidence;
+  inferenceSource?: InferenceSource;
+  raceMatchCandidates?: ResultsInboxRaceMatch[];
+  correctionRequest?: ResultsInboxCorrectionRequest;
+  errorMessage: string;
+}): Promise<{ candidate: ResultsInboxCandidate; duplicate: boolean }> {
+  const store = await loadStore();
+  const fingerprint = fingerprintInboxFailure({
+    emailId: input.emailId,
+    subject: input.subject,
+    bodyText: input.bodyText,
+    fileName: input.fileName,
+    reason: input.errorMessage,
+  });
+
+  const existing = store.items.find(
+    (item) =>
+      item.fingerprint === fingerprint &&
+      (item.status === "queued" || item.status === "draft-created" || item.status === "error")
+  );
+
+  if (existing) {
+    return { candidate: existing, duplicate: true };
+  }
+
+  const timestamp = nowIso();
+  const candidate: ResultsInboxCandidate = {
+    kind: input.kind ?? "results-upload",
+    id: randomUUID(),
+    emailId: input.emailId.trim() || randomUUID(),
+    messageId: input.messageId.trim() || randomUUID(),
+    fingerprint,
+    sender: input.sender.trim(),
+    subject: input.subject.trim(),
+    receivedAt: input.receivedAt?.trim() || timestamp,
+    fileName: input.fileName?.trim() || "(no attachment)",
+    sourceType: input.sourceType,
+    selectedWorksheet: input.selectedWorksheet,
+    worksheetScores: input.worksheetScores,
+    bodyText: input.bodyText,
+    raceId: input.raceId,
+    year: input.year,
+    inferenceConfidence: input.inferenceConfidence,
+    inferenceSource: input.inferenceSource,
+    raceMatchCandidates: input.raceMatchCandidates,
+    correctionRequest: input.correctionRequest,
+    status: "error",
+    errorMessage: input.errorMessage.trim(),
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -1273,7 +1330,7 @@ export function summarizeResultsInbox(candidates: ResultsInboxCandidate[]): {
   queued: number;
   draftCreated: number;
   rejected: number;
-  error: number;
+  needsChecking: number;
 } {
   return candidates.reduce(
     (summary, candidate) => {
@@ -1284,11 +1341,11 @@ export function summarizeResultsInbox(candidates: ResultsInboxCandidate[]): {
       } else if (candidate.status === "rejected") {
         summary.rejected += 1;
       } else {
-        summary.error += 1;
+        summary.needsChecking += 1;
       }
 
       return summary;
     },
-    { queued: 0, draftCreated: 0, rejected: 0, error: 0 }
+    { queued: 0, draftCreated: 0, rejected: 0, needsChecking: 0 }
   );
 }

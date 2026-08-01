@@ -29,8 +29,8 @@ export async function POST(request: Request) {
 
   const candidates = await listResultsInboxCandidates();
   const summary = summarizeResultsInbox(candidates);
-  const oldestQueued = candidates
-    .filter((candidate) => candidate.status === "queued")
+  const oldestNeedsChecking = candidates
+    .filter((candidate) => candidate.status === "error" || candidate.status === "queued")
     .at(-1)?.createdAt;
 
   return NextResponse.json({
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     queued: summary.queued,
     draftCreated: summary.draftCreated,
     dismissed: summary.rejected,
-    needsAttention: summary.error,
-    oldestQueued,
+    needsChecking: summary.needsChecking,
+    oldestNeedsChecking,
   });
 }

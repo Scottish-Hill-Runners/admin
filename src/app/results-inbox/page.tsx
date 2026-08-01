@@ -15,13 +15,13 @@ export default async function ResultsInboxPage() {
     <EditorialShell
       eyebrow="Scottish Hill Runners"
       title="Results inbox"
-      description="Review incoming results emails and create draft updates when they are ready."
+      description="Track incoming results emails, draft updates, and anything that needs a follow-up."
     >
       <section className="rounded-[1.5rem] border border-stone-900/10 bg-white/85 p-6 shadow-[0_18px_40px_rgba(47,39,29,0.08)]">
         <div className="grid gap-3 sm:grid-cols-4">
           <div className="rounded-xl border border-stone-900/10 bg-stone-50 p-4">
-            <p className="text-xs uppercase tracking-[0.14em] text-stone-500">Queued</p>
-            <p className="mt-2 text-2xl font-semibold text-stone-900">{summary.queued}</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-stone-500">Total emails</p>
+            <p className="mt-2 text-2xl font-semibold text-stone-900">{candidates.length}</p>
           </div>
           <div className="rounded-xl border border-stone-900/10 bg-stone-50 p-4">
             <p className="text-xs uppercase tracking-[0.14em] text-stone-500">Draft created</p>
@@ -32,15 +32,15 @@ export default async function ResultsInboxPage() {
             <p className="mt-2 text-2xl font-semibold text-stone-900">{summary.rejected}</p>
           </div>
           <div className="rounded-xl border border-stone-900/10 bg-stone-50 p-4">
-            <p className="text-xs uppercase tracking-[0.14em] text-stone-500">Needs attention</p>
-            <p className="mt-2 text-2xl font-semibold text-stone-900">{summary.error}</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-stone-500">Needs checking</p>
+            <p className="mt-2 text-2xl font-semibold text-stone-900">{summary.needsChecking}</p>
           </div>
         </div>
 
         {candidates.length === 0 ? (
           <p className="mt-6 text-sm leading-6 text-stone-700">
-            No incoming results are queued yet. Send a CSV, XLSX, or ODS attachment to the
-            monitored mailbox and it will appear here after ingestion.
+            No incoming results have been processed yet. Send a CSV, XLSX, or ODS attachment to
+            the monitored mailbox and it will appear here after it is handled.
           </p>
         ) : (
           <div className="mt-6 space-y-4">
