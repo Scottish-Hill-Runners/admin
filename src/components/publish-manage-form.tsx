@@ -14,6 +14,71 @@ import type { PublishNewsCandidate } from "@/lib/news-social";
 
 const idle: ManageActionState = { status: "idle" };
 
+type InlineDiffLineKind = "meta" | "hunk" | "add" | "remove" | "context";
+
+type InlineDiffLine = {
+  kind: InlineDiffLineKind;
+  text: string;
+};
+
+function parseInlineDiffPatch(patch: string): InlineDiffLine[] {
+  return patch.replace(/\r\n?/g, "\n").split("\n").map((line) => {
+    if (line.startsWith("@@")) {
+      return { kind: "hunk", text: line } satisfies InlineDiffLine;
+    }
+
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      return { kind: "add", text: line } satisfies InlineDiffLine;
+    }
+
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      return { kind: "remove", text: line } satisfies InlineDiffLine;
+    }
+
+    if (
+      line.startsWith("diff ") ||
+      line.startsWith("index ") ||
+      line.startsWith("---") ||
+      line.startsWith("+++") ||
+      line.startsWith("\\ No newline")
+    ) {
+      return { kind: "meta", text: line } satisfies InlineDiffLine;
+    }
+
+    return { kind: "context", text: line } satisfies InlineDiffLine;
+  });
+}
+
+function InlineDiffPreview({ patch }: { patch: string }) {
+  const lines = parseInlineDiffPatch(patch);
+
+  return (
+    <div className="mt-1 max-h-48 overflow-auto rounded border border-stone-300 bg-white">
+      {lines.map((line, index) => {
+        const toneClass =
+          line.kind === "add"
+            ? "bg-lime-50 text-lime-900"
+            : line.kind === "remove"
+              ? "bg-red-50 text-red-900"
+              : line.kind === "hunk"
+                ? "bg-amber-50 text-amber-900"
+                : line.kind === "meta"
+                  ? "bg-stone-100 text-stone-700"
+                  : "bg-white text-stone-700";
+
+        return (
+          <p
+            key={`${line.kind}:${index}`}
+            className={`px-2 py-0.5 font-mono text-[11px] leading-5 whitespace-pre-wrap ${toneClass}`}
+          >
+            {line.text || " "}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 function SubmissionFilePanel({
   pullNumber,
   file,
@@ -47,9 +112,7 @@ function SubmissionFilePanel({
               Diff preview
             </p>
             {file.patch ? (
-              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-stone-900 p-3 text-[11px] text-stone-100">
-                {file.patch}
-              </pre>
+              <InlineDiffPreview patch={file.patch} />
             ) : (
               <p className="mt-1 text-xs text-stone-500">No inline diff is available for this file.</p>
             )}
