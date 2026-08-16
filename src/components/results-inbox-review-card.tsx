@@ -75,13 +75,20 @@ export function ResultsInboxReviewCard({
             Source file: {candidate.fileName}
             {kind === "minor-correction"
               ? " (correction email)"
-              : candidate.sourceType === "xlsx"
-                ? " (XLSX converted to CSV)"
-                : candidate.sourceType === "ods"
-                  ? " (ODS converted to CSV)"
-                  : " (CSV)"}
+              : candidate.sourceType === "google-docs"
+                ? " (Google Docs link)"
+                : candidate.sourceType === "xlsx"
+                  ? " (XLSX converted to CSV)"
+                  : candidate.sourceType === "ods"
+                    ? " (ODS converted to CSV)"
+                    : " (CSV)"}
             {candidate.selectedWorksheet ? `, sheet: ${candidate.selectedWorksheet}` : ""}
           </p>
+          {candidate.documentUrl ? (
+            <p className="mt-1 text-xs text-stone-600">
+              Document link: {candidate.documentUrl}
+            </p>
+          ) : null}
           {candidate.raceId || candidate.year ? (
             <p className="mt-1 text-xs text-stone-600">
               {candidate.raceId ? `Race: ${candidate.raceId}` : "Race not set"}

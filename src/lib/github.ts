@@ -2003,6 +2003,67 @@ export async function createContentPullRequestWithFiles({
   };
 }
 
+export async function upsertContentPullRequestWithFiles(input: CreateContentPrWithFilesInput): Promise<{
+  title: string;
+  branchName: string;
+  files: string[];
+  prNumber: number;
+  prUrl: string;
+}> {
+  const client = getGitHubClient();
+  if (!client) {
+    throw new Error("GitHub credentials are not configured. Set GITHUB_TOKEN or GitHub App values.");
+  }
+
+  const repo = parseRepoSlug(contentConfig.repo);
+  const baseBranch = await ensureStagingBranch(client, repo);
+
+  type PrListItem = { number: number; html_url: string; head: { ref: string } };
+  const response = await client.request("GET /repos/{owner}/{repo}/pulls", {
+    owner: repo.owner,
+    repo: repo.repo,
+    state: "open",
+    base: baseBranch,
+    head: `${repo.owner}:${input.branchName}`,
+    per_page: 5,
+  });
+
+  const existingPr = (response.data as PrListItem[]).find(
+    (pull) => pull.head.ref === input.branchName
+  ) ?? null;
+
+  if (!existingPr) {
+    return createContentPullRequestWithFiles(input);
+  }
+
+  const activeBranchName = input.branchName;
+
+  for (const file of input.files) {
+    const normalizedPath = normalizeRepoPath(file.path);
+    const existingSha = await getExistingFileSha(client, repo, normalizedPath, activeBranchName);
+    const content = file.encoding === "base64" ? file.content : toBase64(file.content);
+
+    await client.repos.createOrUpdateFileContents({
+      owner: repo.owner,
+      repo: repo.repo,
+      path: normalizedPath,
+      branch: activeBranchName,
+      message: file.commitMessage ?? input.commitMessage,
+      content,
+      sha: existingSha,
+      ...(input.author ? { author: input.author, committer: input.author } : {}),
+    });
+  }
+
+  return {
+    title: input.title,
+    branchName: activeBranchName,
+    files: input.files.map((file) => normalizeRepoPath(file.path)),
+    prNumber: existingPr.number,
+    prUrl: existingPr.html_url,
+  };
+}
+
 export async function listClubDrafts(): Promise<ClubListItem[]> {
   try {
     const entries = await getRepositoryDirectory("clubs");

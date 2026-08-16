@@ -38,6 +38,9 @@ const envSchema = z
   CLOUDINARY_CLOUD_NAME: optStr,
   CLOUDINARY_API_KEY: optStr,
   CLOUDINARY_API_SECRET: optStr,
+  DOCUMENTS_REFRESH_SECRET: optStr,
+  DOCUMENTS_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
+  DOCUMENTS_API_ORIGINS: optStr,
   GITHUB_TOKEN: optStr,
   GITHUB_APP_ID: optStr,
   GITHUB_APP_PRIVATE_KEY: optStr,
@@ -48,11 +51,12 @@ const envSchema = z
   VERCEL_AUTOMATION_BYPASS_SECRET: optStr,
   GITHUB_DEBUG_PERF: boolWithDefaultFalse,
   PUBLISHER_EMAILS: optStr,
+  RESULTS_INBOX_WEBHOOK_SECRET: optStr,
   RESULTS_INBOX_RESEND_WEBHOOK_SECRET: optStr,
   RESULTS_INBOX_CRON_SECRET: optStr,
   RESULTS_INBOX_CALENDAR_URL: z.preprocess(
     (v) => (v === "" ? undefined : v),
-    z.url().default("https://beta.scottishhillrunners.uk/calendar.json.gz")
+    z.url().default("https://scottishhillrunners.uk/calendar.json.gz")
   ),
   RESULTS_INBOX_STATE_PATH: z.string().min(1).default("_admin/results-inbox.json"),
   })
@@ -108,6 +112,9 @@ export const env = envSchema.parse({
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
+  DOCUMENTS_REFRESH_SECRET: process.env.DOCUMENTS_REFRESH_SECRET,
+  DOCUMENTS_CACHE_TTL_SECONDS: process.env.DOCUMENTS_CACHE_TTL_SECONDS,
+  DOCUMENTS_API_ORIGINS: process.env.DOCUMENTS_API_ORIGINS,
   GITHUB_TOKEN: process.env.GITHUB_TOKEN,
   GITHUB_APP_ID: process.env.GITHUB_APP_ID,
   GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,

@@ -1318,6 +1318,13 @@ export async function submitDocumentsDraft(
         buffer: file.bytes,
         publicId: file.path,
         resourceType: "raw",
+        tags: ["document", ...file.metadata.tags],
+        context: {
+          title: file.metadata.title,
+          ...(file.metadata.description
+            ? { description: file.metadata.description }
+            : {}),
+        },
       });
     }
 

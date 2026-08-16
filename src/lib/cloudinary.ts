@@ -9,6 +9,8 @@ type UploadBufferOptions = {
   buffer: Buffer;
   publicId: string;
   resourceType: ResourceType;
+  tags?: string[];
+  context?: Record<string, string>;
 };
 
 let isConfigured = false;
@@ -36,6 +38,8 @@ export async function uploadBufferToCloudinary({
   buffer,
   publicId,
   resourceType,
+  tags,
+  context,
 }: UploadBufferOptions): Promise<{ publicId: string; secureUrl: string }> {
   ensureCloudinaryConfigured();
 
@@ -46,6 +50,8 @@ export async function uploadBufferToCloudinary({
         resource_type: resourceType,
         overwrite: false,
         unique_filename: false,
+        tags,
+        context,
       },
       (error, result) => {
         if (error) {

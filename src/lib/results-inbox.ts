@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "crypto";
 import { gunzipSync } from "zlib";
+import matter from "gray-matter";
 import { z } from "zod";
 import { contentConfig } from "@/lib/content-config";
 import { env } from "@/lib/env";
@@ -11,6 +12,7 @@ import {
   normalizeRaceResultsHeaders,
   splitCsvLine,
 } from "@/lib/results-csv";
+import { buildResultsNewsPrefill } from "@/lib/results-news-template";
 
 const MAX_QUEUE_ITEMS = 800;
 const CALENDAR_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -129,7 +131,8 @@ export type ResultsInboxCandidate = {
   subject: string;
   receivedAt: string;
   fileName: string;
-  sourceType?: "csv" | "xlsx" | "ods";
+  sourceType?: "csv" | "xlsx" | "ods" | "google-docs";
+  documentUrl?: string;
   selectedWorksheet?: string;
   worksheetScores?: Array<{
     sheetName: string;
@@ -170,7 +173,8 @@ const resultsInboxCandidateSchema = z.object({
   subject: z.string().min(1),
   receivedAt: z.string().min(1),
   fileName: z.string().min(1),
-  sourceType: z.enum(["csv", "xlsx", "ods"]).optional(),
+  sourceType: z.enum(["csv", "xlsx", "ods", "google-docs"]).optional(),
+  documentUrl: z.string().url().optional(),
   selectedWorksheet: z.string().min(1).optional(),
   worksheetScores: z
     .array(
@@ -265,7 +269,17 @@ function sanitizeRaceId(value: string): string {
 }
 
 function sanitizeYear(value: string): string {
-  return value.trim().replace(/[^0-9*]/g, "");
+  const trimmed = value.trim().replace(/\s+/g, "");
+  if (!trimmed) {
+    return "";
+  }
+
+  const match = trimmed.match(/^(\d{4})(?:-([A-Za-z0-9]+))?(\*?)$/);
+  if (match) {
+    return `${match[1]}${match[2] ? `-${match[2]}` : ""}${match[3] ?? ""}`;
+  }
+
+  return trimmed.replace(/[^0-9A-Za-z*.-]/g, "");
 }
 
 function normalizeAlphaNumeric(value: string): string {
@@ -289,6 +303,95 @@ function toFileStem(fileName: string): string {
 
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function toSafeSlugSegment(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "") || "report";
+}
+
+function buildResultsNewsPath(reportDate: string, raceId: string): string {
+  const year = reportDate.slice(0, 4);
+  const slug = `${reportDate}-${toSafeSlugSegment(raceId)}`;
+  return `news/${year}/${slug}.md`;
+}
+
+export async function buildResultsWebhookDraftFiles(input: {
+  raceId: string;
+  year: string;
+  csvText: string;
+  reportMarkdown?: string;
+  generateReport?: boolean;
+  reportTitle?: string;
+  reportDate?: string;
+}): Promise<Array<{ path: string; content: string; commitMessage?: string }>> {
+  const normalizedRaceId = input.raceId.trim();
+  const normalizedYear = input.year.trim();
+  const normalizedCsvContent = input.csvText.trimEnd() + "\n";
+  const files = [{
+    path: `races/${normalizedRaceId}/${normalizedYear}.csv`,
+    content: normalizedCsvContent,
+    commitMessage: `Upload results: ${normalizedRaceId} ${normalizedYear}`,
+  }];
+
+  const hasReportMarkdown = Boolean(input.reportMarkdown?.trim());
+  if (!hasReportMarkdown && !input.generateReport) {
+    return files;
+  }
+
+  const reportDate = (input.reportDate ?? new Date().toISOString().slice(0, 10)).trim();
+  const reportTitle = (input.reportTitle ?? `${normalizedRaceId} ${normalizedYear} report`).trim();
+  let reportContent = input.reportMarkdown?.trim();
+
+  if (!reportContent && input.generateReport) {
+    const prefill = await buildResultsNewsPrefill({
+      raceId: normalizedRaceId,
+      year: normalizedYear,
+      csvText: input.csvText,
+      dateIso: reportDate,
+    });
+
+    reportContent = prefill.content;
+  }
+
+  if (!reportContent) {
+    return files;
+  }
+
+  const markdownDocument = matter.stringify(reportContent, {
+    title: reportTitle,
+    date: reportDate,
+    excerpt: reportContent.split(/\n+/).find((line) => line.trim()) ?? reportTitle,
+  });
+
+  files.push({
+    path: buildResultsNewsPath(reportDate, normalizedRaceId),
+    content: markdownDocument,
+    commitMessage: `Create results report: ${normalizedRaceId} ${normalizedYear}`,
+  });
+
+  return files;
+}
+
+export function extractDocumentUrl(bodyText: string): string | undefined {
+  const normalizedBodyText = bodyText.replace(/\r\n?/g, "\n");
+  const patterns = [
+    /(?:google docs link|document link|results link)\s*[:=]\s*(https?:\/\/[^\s]+)/i,
+    /(https?:\/\/(?:docs\.google\.com|drive\.google\.com)\/[^\s]+)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalizedBodyText.match(pattern);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+
+  return undefined;
 }
 
 function normalizeBulletKey(value: string): string {
@@ -571,6 +674,70 @@ export function applyMinorCorrectionToCsv(
       .map((change) => `${change.field} → ${change.value}`)
       .join(", "),
     candidates: candidates.slice(0, 5),
+  };
+}
+
+const directMinorCorrectionPayloadSchema = z.object({
+  type: z.enum(["minor-correction", "correction"]).optional(),
+  contentType: z.enum(["minor-correction", "correction"]).optional(),
+  raceId: z.string().trim().min(1).optional(),
+  year: z.string().trim().min(1).optional(),
+  runnerName: z.string().trim().min(1).optional(),
+  runnerPosition: z.string().trim().min(1).optional(),
+  runnerCategory: z.string().trim().min(1).optional(),
+  runnerClub: z.string().trim().min(1).optional(),
+  changeText: z.string().optional(),
+  changes: z
+    .array(
+      z.object({
+        field: z.enum(["name", "position", "category", "club"]),
+        value: z.string().trim().min(1),
+      })
+    )
+    .optional(),
+  parseConfidence: z.enum(["high", "medium", "low", "none"]).optional(),
+});
+
+export function parseMinorCorrectionPayload(payload: unknown): ResultsInboxCorrectionRequest | null {
+  const parsedPayload = directMinorCorrectionPayloadSchema.safeParse(payload);
+  if (!parsedPayload.success) {
+    return null;
+  }
+
+  const raceId = sanitizeRaceId(parsedPayload.data.raceId ?? "");
+  const year = sanitizeYear(parsedPayload.data.year ?? "");
+  const changeText = normalizeWhitespace(parsedPayload.data.changeText ?? "");
+  const changes =
+    parsedPayload.data.changes?.map((change) => ({
+      field: change.field,
+      value: change.value.trim(),
+    })) ?? [];
+
+  if (!raceId || !year || (changes.length === 0 && !changeText)) {
+    return null;
+  }
+
+  const effectiveChanges = changes.length > 0 ? changes : parseCorrectionChanges(changeText);
+  if (effectiveChanges.length === 0) {
+    return null;
+  }
+
+  const parseConfidence =
+    parsedPayload.data.parseConfidence ??
+    (raceId && year && effectiveChanges.length > 0
+      ? "high"
+      : "low");
+
+  return {
+    raceId,
+    year,
+    runnerName: normalizeWhitespace(parsedPayload.data.runnerName ?? "") || undefined,
+    runnerPosition: normalizeWhitespace(parsedPayload.data.runnerPosition ?? "") || undefined,
+    runnerCategory: normalizeWhitespace(parsedPayload.data.runnerCategory ?? "") || undefined,
+    runnerClub: normalizeWhitespace(parsedPayload.data.runnerClub ?? "") || undefined,
+    changeText,
+    changes: effectiveChanges,
+    parseConfidence,
   };
 }
 
@@ -1037,7 +1204,8 @@ export async function enqueueResultsInboxCandidate(input: {
   bodyText?: string;
   receivedAt?: string;
   fileName: string;
-  sourceType?: "csv" | "xlsx" | "ods";
+  sourceType?: "csv" | "xlsx" | "ods" | "google-docs";
+  documentUrl?: string;
   selectedWorksheet?: string;
   worksheetScores?: Array<{
     sheetName: string;
@@ -1109,6 +1277,7 @@ export async function enqueueResultsInboxCandidate(input: {
     receivedAt: input.receivedAt?.trim() || timestamp,
     fileName: input.fileName.trim(),
     sourceType: input.sourceType,
+    documentUrl: input.documentUrl,
     selectedWorksheet: input.selectedWorksheet,
     worksheetScores: input.worksheetScores,
     csvText: input.csvText,
@@ -1188,7 +1357,8 @@ export async function recordResultsInboxFailure(input: {
   receivedAt?: string;
   fileName?: string;
   bodyText?: string;
-  sourceType?: "csv" | "xlsx" | "ods";
+  sourceType?: "csv" | "xlsx" | "ods" | "google-docs";
+  documentUrl?: string;
   selectedWorksheet?: string;
   worksheetScores?: Array<{
     sheetName: string;
@@ -1238,6 +1408,7 @@ export async function recordResultsInboxFailure(input: {
     receivedAt: input.receivedAt?.trim() || timestamp,
     fileName: input.fileName?.trim() || "(no attachment)",
     sourceType: input.sourceType,
+    documentUrl: input.documentUrl,
     selectedWorksheet: input.selectedWorksheet,
     worksheetScores: input.worksheetScores,
     bodyText: input.bodyText,
