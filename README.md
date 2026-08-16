@@ -196,6 +196,7 @@ The admin app also exposes Cloudinary-backed document metadata for the static si
 | --- | --- | --- |
 | `GET /api/public/documents` | Returns cached document metadata and public Cloudinary delivery URLs. | None; intended for browser requests from the public site. |
 | `POST /api/public/documents/refresh` | Forces a fresh Cloudinary metadata scan and replaces the in-memory document snapshot. | `x-documents-refresh-secret` header. |
+| `POST /api/public/minor-corrections` | Accepts a runner correction submitted from the public site and forwards it to `/api/content-webhook`, adding `RESULTS_INBOX_WEBHOOK_SECRET` server-side. | None from the browser; the secret is never sent to the client. |
 
 The public site only calls the `GET` endpoint. The refresh endpoint is currently an administrative/automation hook; it is not a Cloudinary notification webhook and is not called by the browser. A future scheduled job or admin control can call it with:
 

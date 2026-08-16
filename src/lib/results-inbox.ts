@@ -6,13 +6,37 @@ import { contentConfig } from "@/lib/content-config";
 import { env } from "@/lib/env";
 import {
   getContentFileAtRef,
+  getRaceResultsDraft,
+  isGitHubAccessError,
+  listAllClubNameSet,
   upsertContentFileAtRef,
+  upsertContentPullRequest,
 } from "@/lib/github";
 import {
+  normalizeRaceResultsCsv,
   normalizeRaceResultsHeaders,
   splitCsvLine,
+  validateRaceResultsCsv,
 } from "@/lib/results-csv";
 import { buildResultsNewsPrefill } from "@/lib/results-news-template";
+
+function toBranchSafeSegment(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function summarizeCorrectionValidationIssues(
+  issues: Array<{ level: string; row?: number | null; message: string }>
+): string {
+  return issues
+    .filter((issue) => issue.level === "error")
+    .slice(0, 3)
+    .map((issue) => (issue.row != null ? `row ${issue.row}: ${issue.message}` : issue.message))
+    .join("; ");
+}
 
 const MAX_QUEUE_ITEMS = 800;
 const CALENDAR_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -1428,6 +1452,125 @@ export async function recordResultsInboxFailure(input: {
   await saveStore(store);
 
   return { candidate, duplicate: false };
+}
+
+export type MinorCorrectionResult = {
+  status: "already-processed" | "draft-created" | "needs-checking" | "rejected" | "error";
+  candidateId: string;
+  submissionNumber?: number;
+  submissionUrl?: string;
+  message?: string;
+};
+
+/** Queues a minor-correction request and, when the CSV row can be matched cleanly, creates the draft PR immediately. */
+export async function queueAndApplyMinorCorrection(input: {
+  source: string;
+  correctionRequest: ResultsInboxCorrectionRequest;
+}): Promise<MinorCorrectionResult> {
+  const queued = await enqueueMinorCorrectionCandidate({
+    emailId: input.source,
+    messageId: `${input.source}-${Date.now()}`,
+    sender: input.source,
+    subject: `Correction: ${input.correctionRequest.raceId} ${input.correctionRequest.year}`,
+    bodyText: JSON.stringify(input.correctionRequest),
+    receivedAt: new Date().toISOString(),
+    correctionRequest: input.correctionRequest,
+  });
+
+  const candidate = queued.candidate;
+  if (candidate.status === "draft-created" && candidate.submissionUrl) {
+    return {
+      status: "already-processed",
+      candidateId: candidate.id,
+      submissionNumber: candidate.submissionNumber,
+      submissionUrl: candidate.submissionUrl,
+    };
+  }
+
+  if (candidate.status === "error" || candidate.status === "rejected") {
+    return { status: candidate.status, candidateId: candidate.id };
+  }
+
+  const existingDraft =
+    (await getRaceResultsDraft(input.correctionRequest.raceId, input.correctionRequest.year, {
+      ref: contentConfig.stagingBranch,
+    })) ?? (await getRaceResultsDraft(input.correctionRequest.raceId, input.correctionRequest.year));
+
+  if (!existingDraft) {
+    const message = "No results file was found for this race and year.";
+    await markResultsInboxCandidateError(candidate.id, message);
+    return { status: "needs-checking", candidateId: candidate.id, message };
+  }
+
+  const applied = applyMinorCorrectionToCsv(existingDraft.csvText, input.correctionRequest);
+  if (applied.status !== "matched") {
+    await markResultsInboxCandidateError(candidate.id, applied.message);
+    return { status: "needs-checking", candidateId: candidate.id, message: applied.message };
+  }
+
+  const normalizedCsvText = normalizeRaceResultsCsv(applied.csvText);
+  const knownClubNames = await listAllClubNameSet();
+  const issues = validateRaceResultsCsv(normalizedCsvText, { knownClubNames });
+  const blockingIssues = issues.filter((issue) => issue.level === "error");
+  if (blockingIssues.length > 0) {
+    const issueMessage = summarizeCorrectionValidationIssues(issues);
+    await markResultsInboxCandidateError(candidate.id, issueMessage);
+    return { status: "needs-checking", candidateId: candidate.id, message: issueMessage };
+  }
+
+  const warnings = issues.filter((issue) => issue.level === "warning");
+  const warningsSection =
+    warnings.length === 0
+      ? "No validation warnings."
+      : [
+          `### Validation warnings (${warnings.length})`,
+          ...warnings.map((issue) =>
+            issue.row ? `- Row ${issue.row}: ${issue.message}` : `- ${issue.message}`
+          ),
+        ].join("\n");
+
+  const raceIdBranchSegment = toBranchSafeSegment(input.correctionRequest.raceId || "race");
+  const yearBranchSegment = toBranchSafeSegment(input.correctionRequest.year || "year");
+
+  try {
+    const result = await upsertContentPullRequest({
+      title: `${input.correctionRequest.raceId} ${input.correctionRequest.year} results correction`,
+      path: `races/${input.correctionRequest.raceId}/${input.correctionRequest.year}.csv`,
+      content: normalizedCsvText,
+      commitMessage: `Apply results correction: ${input.correctionRequest.raceId} ${input.correctionRequest.year}`,
+      prTitle: `Results correction: ${input.correctionRequest.raceId} ${input.correctionRequest.year}`,
+      prBody:
+        `Applied from a ${input.source} correction submission.\n\n` +
+        `- Content repo: ${contentConfig.repo}\n` +
+        `- Path: races/${input.correctionRequest.raceId}/${input.correctionRequest.year}.csv\n` +
+        `- Applied change: ${applied.summary}\n` +
+        `- Matched row: ${applied.matchedRow.rowNumber}\n\n` +
+        warningsSection,
+      branchName: `shr-admin/results-correction-${raceIdBranchSegment}-${yearBranchSegment}`,
+    });
+
+    await markResultsInboxCandidateDraftCreated({
+      id: candidate.id,
+      submissionNumber: result.prNumber,
+      submissionUrl: result.prUrl,
+    });
+
+    return {
+      status: "draft-created",
+      candidateId: candidate.id,
+      submissionNumber: result.prNumber,
+      submissionUrl: result.prUrl,
+    };
+  } catch (error) {
+    const message = isGitHubAccessError(error)
+      ? "Publishing is not set up yet. Please contact an administrator."
+      : error instanceof Error
+        ? error.message
+        : "Failed to create this correction draft.";
+
+    await markResultsInboxCandidateError(candidate.id, message);
+    return { status: "needs-checking", candidateId: candidate.id, message };
+  }
 }
 
 export async function markResultsInboxCandidateRejected(id: string): Promise<ResultsInboxCandidate | null> {

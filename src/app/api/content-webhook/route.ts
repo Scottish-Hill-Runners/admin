@@ -9,11 +9,11 @@ import {
   upsertContentPullRequest,
   upsertContentPullRequestWithFiles,
 } from "@/lib/github";
-import { buildResultsWebhookDraftFiles } from "@/lib/results-inbox";
+import { buildResultsWebhookDraftFiles, parseMinorCorrectionPayload, queueAndApplyMinorCorrection } from "@/lib/results-inbox";
 
 const contentWebhookPayloadSchema = z.object({
-  type: z.enum(["club", "race", "results"]).optional(),
-  contentType: z.enum(["club", "race", "results"]).optional(),
+  type: z.enum(["club", "race", "results", "minor-correction"]).optional(),
+  contentType: z.enum(["club", "race", "results", "minor-correction"]).optional(),
   clubId: z.string().trim().min(1).optional(),
   raceId: z.string().trim().min(1).optional(),
   year: z.string().trim().min(1).optional(),
@@ -29,6 +29,19 @@ const contentWebhookPayloadSchema = z.object({
   reportDate: z.string().trim().min(1).optional(),
   frontmatter: z.record(z.string(), z.unknown()).optional(),
   frontmatterUpdates: z.record(z.string(), z.unknown()).optional(),
+  runnerPosition: z.string().trim().min(1).optional(),
+  runnerName: z.string().trim().min(1).optional(),
+  runnerCategory: z.string().trim().min(1).optional(),
+  runnerClub: z.string().trim().min(1).optional(),
+  changeText: z.string().optional(),
+  changes: z
+    .array(
+      z.object({
+        field: z.enum(["name", "position", "category", "club"]),
+        value: z.string().trim().min(1),
+      })
+    )
+    .optional(),
 });
 
 function toBranchSafeSegment(value: string): string {
@@ -57,7 +70,7 @@ function verifyWebhookSecret(request: Request): void {
 
 export async function POST(request: Request) {
   try {
-    verifyWebhookSecret(request);
+   verifyWebhookSecret(request);
   } catch {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
@@ -148,6 +161,34 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
+  }
+
+  if (contentType === "minor-correction") {
+    const correctionRequest = parseMinorCorrectionPayload({
+      type: "minor-correction",
+      raceId: parsedPayload.data.raceId ?? parsedPayload.data.id,
+      year: parsedPayload.data.year,
+      runnerName: parsedPayload.data.runnerName,
+      runnerPosition: parsedPayload.data.runnerPosition,
+      runnerCategory: parsedPayload.data.runnerCategory,
+      runnerClub: parsedPayload.data.runnerClub,
+      changeText: parsedPayload.data.changeText,
+      changes: parsedPayload.data.changes,
+    });
+
+    if (!correctionRequest) {
+      return NextResponse.json(
+        { message: "A race ID, year, and at least one change are required for correction submissions." },
+        { status: 400 }
+      );
+    }
+
+    const result = await queueAndApplyMinorCorrection({
+      source: "webhook",
+      correctionRequest,
+    });
+
+    return NextResponse.json(result);
   }
 
   if (!idValue) {

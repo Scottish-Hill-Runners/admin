@@ -20,6 +20,7 @@ import {
   parseMinorCorrectionEmail,
   parseMinorCorrectionPayload,
   applyMinorCorrectionToCsv,
+  queueAndApplyMinorCorrection,
 } from "@/lib/results-inbox";
 import {
   countRecognizedRaceResultsHeaders,
@@ -546,137 +547,12 @@ async function processResultsUploadEmail(
 async function processMinorCorrectionRequest(
   correctionRequest: NonNullable<ReturnType<typeof parseMinorCorrectionPayload>>
 ): Promise<NextResponse> {
-  const queued = await enqueueMinorCorrectionCandidate({
-    emailId: "json-webhook",
-    messageId: `json-${Date.now()}`,
-    sender: "json-webhook",
-    subject: `Correction: ${correctionRequest.raceId} ${correctionRequest.year}`,
-    bodyText: JSON.stringify(correctionRequest),
-    receivedAt: new Date().toISOString(),
+  const result = await queueAndApplyMinorCorrection({
+    source: "json-webhook",
     correctionRequest,
   });
 
-  const candidate = queued.candidate;
-  if (candidate.status === "draft-created" && candidate.submissionUrl) {
-    return NextResponse.json({
-      status: "already-processed",
-      candidateId: candidate.id,
-      submissionUrl: candidate.submissionUrl,
-    });
-  }
-
-  if (candidate.status === "error" || candidate.status === "rejected") {
-    return NextResponse.json({
-      status: candidate.status,
-      candidateId: candidate.id,
-    });
-  }
-
-  const effectiveCorrection = {
-    ...correctionRequest,
-    raceId: correctionRequest.raceId,
-    year: correctionRequest.year,
-  };
-
-  const existingDraft =
-    (await getRaceResultsDraft(effectiveCorrection.raceId, effectiveCorrection.year, {
-      ref: contentConfig.stagingBranch,
-    })) ?? (await getRaceResultsDraft(effectiveCorrection.raceId, effectiveCorrection.year));
-
-  if (!existingDraft) {
-    const message = "No results file was found for this race and year.";
-    await markResultsInboxCandidateError(candidate.id, message);
-
-    return NextResponse.json({
-      status: "needs-checking",
-      candidateId: candidate.id,
-      message,
-    });
-  }
-
-  const applied = applyMinorCorrectionToCsv(existingDraft.csvText, effectiveCorrection);
-  if (applied.status !== "matched") {
-    await markResultsInboxCandidateError(candidate.id, applied.message);
-    return NextResponse.json({
-      status: "needs-checking",
-      candidateId: candidate.id,
-      message: applied.message,
-    });
-  }
-
-  const normalizedCsvText = normalizeRaceResultsCsv(applied.csvText);
-  const knownClubNames = await listAllClubNameSet();
-  const issues = validateRaceResultsCsv(normalizedCsvText, { knownClubNames });
-  const blockingIssues = issues.filter((issue) => issue.level === "error");
-  if (blockingIssues.length > 0) {
-    const issueMessage = summarizeValidationIssues(issues);
-    await markResultsInboxCandidateError(candidate.id, issueMessage);
-    return NextResponse.json({
-      status: "needs-checking",
-      candidateId: candidate.id,
-      message: issueMessage,
-    });
-  }
-
-  const warnings = issues.filter((issue) => issue.level === "warning");
-  const warningsSection =
-    warnings.length === 0
-      ? "No validation warnings."
-      : [
-          `### Validation warnings (${warnings.length})`,
-          ...warnings.map((issue) =>
-            issue.row ? `- Row ${issue.row}: ${issue.message}` : `- ${issue.message}`
-          ),
-        ].join("\n");
-
-  const raceIdBranchSegment = toBranchSafeSegment(effectiveCorrection.raceId || "race");
-  const yearBranchSegment = toBranchSafeSegment(effectiveCorrection.year || "year");
-
-  try {
-    const result = await upsertContentPullRequest({
-      title: `${effectiveCorrection.raceId} ${effectiveCorrection.year} results correction`,
-      path: `races/${effectiveCorrection.raceId}/${effectiveCorrection.year}.csv`,
-      content: normalizedCsvText,
-      commitMessage: `Apply results correction: ${effectiveCorrection.raceId} ${effectiveCorrection.year}`,
-      prTitle: `Results correction: ${effectiveCorrection.raceId} ${effectiveCorrection.year}`,
-      prBody:
-        `Applied from a direct JSON correction webhook.\n\n` +
-        `- Content repo: ${contentConfig.repo}\n` +
-        `- Path: races/${effectiveCorrection.raceId}/${effectiveCorrection.year}.csv\n` +
-        `- Applied change: ${applied.summary}\n` +
-        `- Matched row: ${applied.matchedRow.rowNumber}\n\n` +
-        warningsSection,
-      branchName: `shr-admin/results-correction-${raceIdBranchSegment}-${yearBranchSegment}`,
-    });
-
-    await markResultsInboxCandidateDraftCreated({
-      id: candidate.id,
-      submissionNumber: result.prNumber,
-      submissionUrl: result.prUrl,
-    });
-
-    return NextResponse.json({
-      status: "draft-created",
-      candidateId: candidate.id,
-      submissionNumber: result.prNumber,
-      submissionUrl: result.prUrl,
-    });
-  } catch (error) {
-    const message =
-      isGitHubAccessError(error)
-        ? "Publishing is not set up yet. Please contact an administrator."
-        : error instanceof Error
-          ? error.message
-          : "Failed to create this correction draft from the incoming email.";
-
-    await markResultsInboxCandidateError(candidate.id, message);
-
-    return NextResponse.json({
-      status: "needs-checking",
-      candidateId: candidate.id,
-      message,
-    });
-  }
+  return NextResponse.json(result);
 }
 
 async function processMinorCorrectionEmail(
